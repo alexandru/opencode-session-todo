@@ -384,8 +384,8 @@ test("todowrite persists exact bytes and todoread returns the same list and path
   const stored: Snapshot = Schema.decodeUnknownSync(Snapshot)(written.output)
   expect(stored.path).toBe(path)
   expect(stored.todos).toEqual(todos)
-  expect(written.content).toBe(
-    "Todo list updated:\n+ [in_progress|high] Ship +plugin @opencode\n+ [pending|medium] Read docs",
+  expect(written.content).toStartWith(
+    "Todo list updated:\n+ [in_progress|high] Ship +plugin @opencode\n+ [pending|medium] Read docs\n\n",
   )
   expect(read.path).toBe(path)
   expect(read.todos).toEqual(todos)
@@ -480,14 +480,54 @@ test("todowrite reports a before/after diff over the stored list", async (): Pro
       ],
     ),
   )
-  expect(expectSuccess(first).content).toBe(
-    "Todo list updated:\n+ [pending|high] Alpha\n+ [pending|medium] Beta",
+  expect(expectSuccess(first).content).toStartWith(
+    "Todo list updated:\n+ [pending|high] Alpha\n+ [pending|medium] Beta\n\n",
   )
-  expect(expectSuccess(second).content).toBe(
+  expect(expectSuccess(second).content).toStartWith(
     "Todo list updated:\n- [pending|high] Alpha\n- [pending|medium] Beta\n"
-      + "+ [in_progress|high] Alpha\n+ [pending|low] Gamma",
+      + "+ [in_progress|high] Alpha\n+ [pending|low] Gamma\n\n",
   )
-  expect(expectSuccess(third).content).toBe("Todo list unchanged.")
+  expect(expectSuccess(third).content).toStartWith("Todo list unchanged.\n\n")
+})
+
+test("todowrite content appends the full saved snapshot for changed and unchanged writes", async (): Promise<void> => {
+  const directory: string = await temporary()
+  const session: Session.Info = sessionInfo(directory, [rule("todowrite", "*", "allow")])
+  const agent: Agent.Info = agentInfo([rule("todowrite", "*", "allow")])
+  const host: TodoHost = sessionHost(directory, session, agent)
+  const path: string = join(directory, ".agents", "sessions", "ses_tools", "todo.txt")
+  const initial: Todos = Schema.decodeUnknownSync(Todos)([
+    { content: "Alpha", status: "pending", priority: "high" },
+    { content: "Beta", status: "pending", priority: "medium" },
+  ])
+  const changed: Todos = Schema.decodeUnknownSync(Todos)([
+    { content: "Alpha", status: "in_progress", priority: "high" },
+    { content: "Beta", status: "pending", priority: "medium" },
+  ])
+  const snapshot: string = JSON.stringify({
+    path,
+    todos: [
+      { content: "Alpha", status: "in_progress", priority: "high" },
+      { content: "Beta", status: "pending", priority: "medium" },
+    ],
+  })
+  const first: ToolOutcome = await runPlugin(
+    host,
+    writeOutcome(host, session, agent, [], initial),
+  )
+  const second: ToolOutcome = await runPlugin(
+    host,
+    writeOutcome(host, session, agent, initial, changed),
+  )
+  const unchanged: ToolOutcome = await runPlugin(
+    host,
+    writeOutcome(host, session, agent, changed, changed),
+  )
+  expectSuccess(first)
+  expect(expectSuccess(second).content).toBe(
+    "Todo list updated:\n- [pending|high] Alpha\n+ [in_progress|high] Alpha\n\n" + snapshot,
+  )
+  expect(expectSuccess(unchanged).content).toBe("Todo list unchanged.\n\n" + snapshot)
 })
 
 test("todowrite fails on an unexpected stored list and instructs a fresh read", async (): Promise<void> => {

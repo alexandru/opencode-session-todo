@@ -16,6 +16,10 @@ const advance = (cursor: Iterator<string>): string | undefined => {
 
 const diffLines = (previous: readonly string[], next: readonly string[]): readonly string[] => {
   if (
+    previous.length === next.length
+    && previous.every((line: string, index: number): boolean => line === next[index])
+  ) return []
+  if (
     previous.length === 0 || next.length === 0
     || previous.length * next.length > MAX_CELLS
   ) return replaced(previous, next)

@@ -164,9 +164,11 @@ export const register = (ctx: TodoPluginContext): Effect.Effect<void, never, Sco
               Effect.logWarning("Todo saved, but notification failed", error),
           ),
         )
+      const snapshot: Snapshot = { path: saved.path, todos: saved.todos }
+      const message: string = diff === "" ? "Todo list unchanged." : `Todo list updated:\n${diff}`
       return {
-        output: { path: saved.path, todos: saved.todos },
-        content: diff === "" ? "Todo list unchanged." : `Todo list updated:\n${diff}`,
+        output: snapshot,
+        content: `${message}\n\n${JSON.stringify(snapshot)}`,
         metadata: { todos: saved.todos, path: saved.path },
       }
     })

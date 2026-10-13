@@ -21,6 +21,14 @@ test("identical lists produce an empty diff", (): void => {
   expect(diffTodos(todos, todos)).toBe("")
 })
 
+test("identical large lists produce an empty diff", (): void => {
+  const entries: Entry[] = []
+  for (let index: number = 0; index < 1025; index += 1) {
+    entries.push([`Task ${index}`, "pending", "medium"])
+  }
+  expect(diffTodos(list(entries), list(entries))).toBe("")
+})
+
 test("an added task appears as a plus line", (): void => {
   const previous: Todos = list([["Alpha", "pending", "high"]])
   const next: Todos = list([["Alpha", "pending", "high"], ["Beta", "pending", "medium"]])
