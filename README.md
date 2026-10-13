@@ -5,6 +5,8 @@
 Session-local [todo.txt](https://github.com/todotxt/todo.txt) for OpenCode V2.
 Tools for the agent. A sidebar for you. Plain text you can edit.
 
+[npm](https://www.npmjs.com/package/opencode-session-todo)
+
 ## Get started
 
 Add to `opencode.jsonc`:
