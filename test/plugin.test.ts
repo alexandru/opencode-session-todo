@@ -504,13 +504,7 @@ test("todowrite content appends the full saved snapshot for changed and unchange
     { content: "Alpha", status: "in_progress", priority: "high" },
     { content: "Beta", status: "pending", priority: "medium" },
   ])
-  const snapshot: string = JSON.stringify({
-    path,
-    todos: [
-      { content: "Alpha", status: "in_progress", priority: "high" },
-      { content: "Beta", status: "pending", priority: "medium" },
-    ],
-  })
+  const snapshot: string = JSON.stringify({ path, todos: changed })
   const first: ToolOutcome = await runPlugin(
     host,
     writeOutcome(host, session, agent, [], initial),
