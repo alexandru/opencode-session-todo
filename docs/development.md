@@ -12,7 +12,7 @@ make test
 
 ## Package entry points
 
-The package ships TypeScript sources for OpenCode's Bun runtime; no build step is required.
+The package ships TypeScript sources for OpenCode's Bun runtime and precompiled Solid ESM for the TUI. Run `bun run build` before loading the local package; packing builds the TUI automatically.
 
 - `opencode-session-todo`: tools and RPC handlers.
 - `opencode-session-todo/tui`: sidebar and full panel.

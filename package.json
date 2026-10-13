@@ -1,6 +1,6 @@
 {
   "name": "opencode-session-todo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Session-local todo.txt tools and TUI for OpenCode V2",
   "homepage": "https://github.com/alexandru/opencode-todo#readme",
   "bugs": {
@@ -14,12 +14,13 @@
   "type": "module",
   "exports": {
     ".": "./index.ts",
-    "./tui": "./tui.tsx",
+    "./tui": "./dist/tui.js",
     "./rpc": "./rpc.ts"
   },
   "files": [
     "index.ts",
     "tui.tsx",
+    "dist",
     "rpc.ts",
     "src",
     "USAGE.md",
@@ -28,10 +29,12 @@
     "docs/development.md"
   ],
   "scripts": {
+    "build": "bun run build.ts",
     "check": "tsc --noEmit",
     "test": "bun test",
     "format": "dprint fmt",
     "format:check": "dprint check",
+    "prepack": "bun run build",
     "prepublishOnly": "bun run check && bun run test && bun run format:check"
   },
   "dependencies": {
