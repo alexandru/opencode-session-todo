@@ -17,6 +17,7 @@ import {
 import { TodoRpc } from "./rpc.ts"
 import { type Snapshot, type Todo } from "./src/model.ts"
 import { projectTodos, SidebarOptions, type TodoProjection } from "./src/sidebar.ts"
+import { todoSymbols } from "./src/summary.ts"
 
 type View =
   | { readonly status: "loading" }
@@ -26,13 +27,6 @@ type View =
 interface Props {
   readonly sessionID: string
   readonly full?: boolean
-}
-
-const symbols: Readonly<Record<Todo["status"], string>> = {
-  pending: "[ ]",
-  in_progress: "[•]",
-  completed: "[✓]",
-  cancelled: "[–]",
 }
 
 const colorFor = (
@@ -72,10 +66,10 @@ export default Plugin.define({
       initial: { open: true },
     })
     const notify: () => void = api.events.on("updated", (event): void => {
-      if (event.data.diff === "") return
+      if (event.data.summary === "") return
       ctx.ui.toast.show({
         title: "TODO updated",
-        message: event.data.diff,
+        message: event.data.summary,
         variant: "info",
         sessionID: event.data.sessionID,
       })
@@ -207,7 +201,7 @@ export default Plugin.define({
               <For each={todos()}>
                 {(todo): JSX.Element => (
                   <text fg={colorFor(todo.status, ctx.theme)}>
-                    {symbols[todo.status]} {todo.content} · {todo.priority}
+                    {todoSymbols[todo.status]} {todo.content} · {todo.priority}
                   </text>
                 )}
               </For>

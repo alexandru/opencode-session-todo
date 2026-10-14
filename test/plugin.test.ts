@@ -285,8 +285,8 @@ const bothTodoTools = (): SessionContext["tools"] => ({
 const occurrences = (parts: ReadonlyArray<SystemPart>, text: string): number =>
   parts.filter((part): boolean => part.text.includes(text)).length
 
-const ruleExpectedOnWrite: string =
-  "You MUST pass the list you expect to be stored as `previous` to every todowrite"
+const rulePreserveTasks: string =
+  "You MUST preserve existing tasks, order, statuses, and priorities unless actual progress or the user's instructions require a change."
 const ruleInProgressBeforeStart: string = "You MUST mark a task in_progress before starting it."
 const ruleCompletedAfterVerification: string =
   "You MUST mark a task completed immediately after finishing its work and required verification."
@@ -298,7 +298,7 @@ const ruleReconcileBeforeFinal: string =
   "Before your final response, you MUST reconcile the list with what was actually done"
 
 const contractRules: ReadonlyArray<string> = [
-  ruleExpectedOnWrite,
+  rulePreserveTasks,
   ruleInProgressBeforeStart,
   ruleCompletedAfterVerification,
   ruleNoPrematureComplete,
@@ -399,6 +399,7 @@ test("todowrite persists exact bytes and todoread returns the same list and path
     {
       sessionID: "ses_tools",
       diff: "+ [in_progress|high] Ship +plugin @opencode\n+ [pending|medium] Read docs",
+      summary: "[•] Ship +plugin @opencode · high\n[ ] Read docs · medium",
     },
   ])
 })
@@ -488,6 +489,39 @@ test("todowrite reports a before/after diff over the stored list", async (): Pro
       + "+ [in_progress|high] Alpha\n+ [pending|low] Gamma\n\n",
   )
   expect(expectSuccess(third).content).toStartWith("Todo list unchanged.\n\n")
+})
+
+test("updated notifications show only the new versions of changed and added tasks", async (): Promise<void> => {
+  const directory: string = await temporary()
+  const session: Session.Info = sessionInfo(directory, [rule("todowrite", "*", "allow")])
+  const agent: Agent.Info = agentInfo([rule("todowrite", "*", "allow")])
+  const host: TodoHost = sessionHost(directory, session, agent)
+  const initial: Todos = Schema.decodeUnknownSync(Todos)([
+    { content: "Alpha", status: "in_progress", priority: "high" },
+    { content: "Beta", status: "pending", priority: "low" },
+    { content: "Removed", status: "pending", priority: "medium" },
+  ])
+  const changed: Todos = Schema.decodeUnknownSync(Todos)([
+    { content: "Alpha", status: "completed", priority: "high" },
+    { content: "Beta", status: "pending", priority: "low" },
+    { content: "Gamma", status: "pending", priority: "medium" },
+  ])
+  await runPlugin(
+    host,
+    Effect.gen(function*(): Effect.fn.Return<void> {
+      expectSuccess(yield* writeOutcome(host, session, agent, [], initial))
+      expectSuccess(yield* writeOutcome(host, session, agent, initial, changed))
+    }),
+  )
+  expect(host.events[1]).toEqual([
+    "updated",
+    {
+      sessionID: "ses_tools",
+      diff: "- [in_progress|high] Alpha\n+ [completed|high] Alpha\n"
+        + "- [pending|medium] Removed\n+ [pending|medium] Gamma",
+      summary: "[✓] Alpha · high\n[ ] Gamma · medium",
+    },
+  ])
 })
 
 test("todowrite content appends the full saved snapshot for changed and unchanged writes", async (): Promise<void> => {
@@ -641,7 +675,11 @@ test("a session allow overrides an earlier agent deny", async (): Promise<void> 
   expect(host.events).toHaveLength(1)
   expect(host.events[0]).toEqual([
     "updated",
-    { sessionID: "ses_tools", diff: "+ [pending|high] Override" },
+    {
+      sessionID: "ses_tools",
+      diff: "+ [pending|high] Override",
+      summary: "[ ] Override · high",
+    },
   ])
 })
 
@@ -768,6 +806,42 @@ test("both todo tool descriptions carry the RFC 2119 lifecycle rules", async ():
     for (const rule of contractRules) {
       expect(description, `${name} missing: ${rule}`).toContain(rule)
     }
+  }
+})
+
+test("todo prompts reuse saved lists and reserve reads for unknown state or conflicts", async (): Promise<void> => {
+  const directory: string = await temporary()
+  const host: TodoHost = makeHost({
+    directory,
+    sessions: new Map([["ses_hook", sessionInfo(directory, [], "ses_hook")]]),
+    agents: new Map<string, Agent.Info>(),
+  })
+  const event: SessionContext = sessionContext([], bothTodoTools())
+  await runPlugin(host, host.dispatchContext(event))
+  const writeRules: string = `### \`todowrite\`
+
+Replace this session’s TODO list.
+
+- You MUST pass the last known saved list as \`previous\`; use \`[]\` when known empty.
+- You SHOULD reuse the returned saved list for subsequent writes.
+- On conflict, you MUST call \`todoread\` and retry.`
+  const readRules: string = `### \`todoread\`
+
+Read this session’s saved TODO list and storage path.
+
+- You SHOULD use \`todoread\` only when the saved list is unknown or \`todowrite\` reports a conflict.`
+  const writeDescription: string = requireTool(host, "todowrite").description
+  const readDescription: string = requireTool(host, "todoread").description
+  expect(writeDescription).toStartWith(`${writeRules}\n\n`)
+  expect(readDescription).toStartWith(`${readRules}\n\n`)
+  expect(writeDescription).not.toContain(readRules)
+  expect(readDescription).not.toContain(writeRules)
+  expect(event.system).toHaveLength(1)
+  const injected: string = event.system[0]?.text ?? ""
+  expect(injected).toStartWith(`${writeRules}\n\n${readRules}\n\n`)
+  for (const text of [writeDescription, readDescription, injected]) {
+    expect(text).not.toContain("Use it to obtain the `previous` list")
+    expect(text).not.toContain("take `previous` from the latest todoread or todowrite result")
   }
 })
 
@@ -919,7 +993,7 @@ test("repeated dispatch of the same event does not duplicate the instruction", a
     }),
   )
   expect(event.system).toHaveLength(2)
-  expect(occurrences(event.system, ruleExpectedOnWrite)).toBe(1)
+  expect(occurrences(event.system, rulePreserveTasks)).toBe(1)
 })
 
 test("a distinct new-turn event receives the instruction", async (): Promise<void> => {
@@ -946,8 +1020,8 @@ test("a distinct new-turn event receives the instruction", async (): Promise<voi
   )
   expect(first.system).toHaveLength(2)
   expect(second.system).toHaveLength(2)
-  expect(occurrences(first.system, ruleExpectedOnWrite)).toBe(1)
-  expect(occurrences(second.system, ruleExpectedOnWrite)).toBe(1)
+  expect(occurrences(first.system, rulePreserveTasks)).toBe(1)
+  expect(occurrences(second.system, rulePreserveTasks)).toBe(1)
 })
 
 test("context hook registration is scoped and re-registration leaves one active hook", async (): Promise<void> => {
@@ -992,5 +1066,5 @@ test("context hook registration is scoped and re-registration leaves one active 
   expect(secondCount).toBe(1)
   expect(host.activeContextHooks()).toBe(0)
   expect(second.system).toHaveLength(2)
-  expect(occurrences(second.system, ruleExpectedOnWrite)).toBe(1)
+  expect(occurrences(second.system, rulePreserveTasks)).toBe(1)
 })

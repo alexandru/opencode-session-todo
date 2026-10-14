@@ -10,9 +10,15 @@ import { Effect, Schema, type Scope } from "effect"
 import { resolve } from "node:path"
 import { TodoRpc } from "./rpc.ts"
 import { diffTodos } from "./src/diff.ts"
-import { TodoInstructions } from "./src/instructions.ts"
+import {
+  TodoInstructions,
+  TodoLifecycleInstructions,
+  TodoReadInstructions,
+  TodoWriteInstructions,
+} from "./src/instructions.ts"
 import { Snapshot, TodoError, Todos } from "./src/model.ts"
 import { makeTodoStore, SessionDirectory, type TodoStore, type WriteResult } from "./src/store.ts"
+import { summarizeTodos } from "./src/summary.ts"
 
 const WriteInput = Schema.Struct({ previous: Todos, todos: Todos })
 const ReadInput = Schema.Struct({})
@@ -157,7 +163,11 @@ export const register = (ctx: TodoPluginContext): Effect.Effect<void, never, Sco
       )
       const diff: string = diffTodos(saved.previous, saved.todos)
       yield* rpc.events
-        .emit("updated", { sessionID: context.sessionID, diff })
+        .emit("updated", {
+          sessionID: context.sessionID,
+          diff,
+          summary: summarizeTodos(saved.previous, saved.todos),
+        })
         .pipe(
           Effect.catch(
             (error): Effect.Effect<void> =>
@@ -191,8 +201,7 @@ export const register = (ctx: TodoPluginContext): Effect.Effect<void, never, Sco
     yield* ctx.tool.transform((editor): void => {
       editor.add({
         name: "todowrite",
-        description:
-          `Replace this session's ordered todo list when it still equals the \`previous\` list you send; take \`previous\` from the latest todoread or todowrite result in this conversation. A mismatch fails the write: use todoread, then retry. Status: pending, in_progress, completed, cancelled; at most one in_progress. Priority: high, medium, low. Text is one trimmed line; status:/pri: are reserved. An empty todos array clears the list. Persists as project-local todo.txt and updates the TUI.\n\n${TodoInstructions}`,
+        description: `${TodoWriteInstructions}\n\n${TodoLifecycleInstructions}`,
         input: WriteInput,
         output: Snapshot,
         options: { codemode: false, permission: "todowrite" },
@@ -200,8 +209,7 @@ export const register = (ctx: TodoPluginContext): Effect.Effect<void, never, Sco
       })
       editor.add({
         name: "todoread",
-        description:
-          `Read this session's todo.txt list and storage path. Use it to obtain the \`previous\` list todowrite expects, or to retry after a failed write; missing files mean an empty list.\n\n${TodoInstructions}`,
+        description: `${TodoReadInstructions}\n\n${TodoLifecycleInstructions}`,
         input: ReadInput,
         output: Snapshot,
         options: { codemode: false, permission: "todowrite" },

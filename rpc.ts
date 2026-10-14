@@ -15,7 +15,7 @@ export const TodoRpc = Rpc.define({
   events: {
     updated: {
       schema: Schema.toStandardSchemaV1(
-        Schema.Struct({ sessionID: Session.ID, diff: Schema.String }),
+        Schema.Struct({ sessionID: Session.ID, diff: Schema.String, summary: Schema.String }),
       ),
     },
   },
