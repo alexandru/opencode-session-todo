@@ -7,7 +7,10 @@ export const todoSymbols: Readonly<Record<Todo["status"], string>> = {
   cancelled: "[–]",
 }
 
-const keyFor = (todo: Todo): string => JSON.stringify([todo.content, todo.status, todo.priority])
+export const formatTodo = (todo: Todo): string =>
+  `${todoSymbols[todo.status]} ${todo.content} · ${todo.priority}`
+
+const keyFor = (todo: Todo): string => `${todo.status}|${todo.priority}|${todo.content}`
 
 export const summarizeTodos = (previous: Todos, next: Todos): string => {
   const unchanged: Map<string, number> = new Map()
@@ -22,7 +25,7 @@ export const summarizeTodos = (previous: Todos, next: Todos): string => {
     if (remaining > 0) {
       unchanged.set(key, remaining - 1)
     } else {
-      lines.push(`${todoSymbols[todo.status]} ${todo.content} · ${todo.priority}`)
+      lines.push(formatTodo(todo))
     }
   }
   return lines.join("\n")

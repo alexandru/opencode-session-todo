@@ -46,7 +46,7 @@ cannot begin with a priority/date, and cannot contain `status:` or `pri:` tokens
   with the active task first.
 - **Show all …**, `/todos`, or **Ctrl+P → Toggle session todos** opens the full scrollable panel.
 - Close with **Close ×**, **Esc** while focused, or the same command-palette action.
-- Each `todowrite` pops a toast with the before/after diff of the change.
+- Update toasts show only added or changed tasks, one line each, with the new status and priority.
 - Manual file edits appear within two seconds. Collapsing does not change the tasks.
 
 ## Storage

@@ -17,7 +17,7 @@ import {
 import { TodoRpc } from "./rpc.ts"
 import { type Snapshot, type Todo } from "./src/model.ts"
 import { projectTodos, SidebarOptions, type TodoProjection } from "./src/sidebar.ts"
-import { todoSymbols } from "./src/summary.ts"
+import { formatTodo } from "./src/summary.ts"
 
 type View =
   | { readonly status: "loading" }
@@ -201,7 +201,7 @@ export default Plugin.define({
               <For each={todos()}>
                 {(todo): JSX.Element => (
                   <text fg={colorFor(todo.status, ctx.theme)}>
-                    {todoSymbols[todo.status]} {todo.content} · {todo.priority}
+                    {formatTodo(todo)}
                   </text>
                 )}
               </For>
