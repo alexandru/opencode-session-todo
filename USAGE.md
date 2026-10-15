@@ -23,6 +23,9 @@ Reopen the TUI after configuration changes. `sidebarLimit` is a positive integer
 
 Only root sessions expose these tools and receive the TODO lifecycle instructions. Subagents see neither tool.
 
+Agents start a TODO list when they have more than one work item to track, not for a straightforward
+question or a single work item. Existing unfinished work remains tracked through completion.
+
 - `todoread({})` reads the current session's tasks and file path. Missing files return an empty list.
 - `todowrite({ previous, todos })` replaces the ordered list only when the stored list still equals `previous`; take `previous` from the latest `todoread` or `todowrite` result. A mismatch fails with an instruction to `todoread` and retry. The result reports a before/after diff. An empty `todos` array clears the list.
 
@@ -46,7 +49,6 @@ cannot begin with a priority/date, and cannot contain `status:` or `pri:` tokens
   with the active task first.
 - **Show all …**, `/todos`, or **Ctrl+P → Toggle session todos** opens the full scrollable panel.
 - Close with **Close ×**, **Esc** while focused, or the same command-palette action.
-- Update toasts show only added or changed tasks, one line each, with the new status and priority.
 - Manual file edits appear within two seconds. Collapsing does not change the tasks.
 
 ## Storage

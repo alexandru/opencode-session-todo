@@ -809,6 +809,37 @@ test("both todo tool descriptions carry the RFC 2119 lifecycle rules", async ():
   }
 })
 
+test("todo prompts require multiple work items before starting a list", async (): Promise<void> => {
+  const directory: string = await temporary()
+  const host: TodoHost = makeHost({
+    directory,
+    sessions: new Map([["ses_hook", sessionInfo(directory, [], "ses_hook")]]),
+    agents: new Map<string, Agent.Info>(),
+  })
+  const event: SessionContext = sessionContext([], bothTodoTools())
+  await runPlugin(host, host.dispatchContext(event))
+  for (
+    const text of [
+      requireTool(host, "todowrite").description,
+      requireTool(host, "todoread").description,
+      event.system[0]?.text ?? "",
+    ]
+  ) {
+    expect(text).toContain(
+      "You MUST create a TODO list when you have more than one work item to track.",
+    )
+    expect(text).toContain(
+      "You MUST NOT create a TODO list for a straightforward question or a single work item.",
+    )
+    expect(text).toContain(
+      "You MUST NOT split a single work item into artificial steps just to justify a TODO list.",
+    )
+    expect(text).toContain(
+      "The following rules apply only when a TODO list is needed or already tracks unfinished work.",
+    )
+  }
+})
+
 test("todo prompts reuse saved lists and reserve reads for unknown state or conflicts", async (): Promise<void> => {
   const directory: string = await temporary()
   const host: TodoHost = makeHost({

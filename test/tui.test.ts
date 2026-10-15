@@ -43,7 +43,7 @@ interface Fixture {
   readonly subscribed: string[]
   readonly unsubscribe: { calls: number }
   readonly slots: SlotRegistration[]
-  readonly updatedHandler: () => UpdatedHandler
+  readonly emitUpdated: UpdatedHandler
 }
 
 const restorers: Array<() => void> = []
@@ -73,16 +73,10 @@ const makeFixture = (themeMode: "light" | "dark"): Fixture => {
     (): void => rpcSpy.mockRestore(),
     (): void => onSpy.mockRestore(),
   )
-  const updatedHandler = (): UpdatedHandler => {
-    const call = onSpy.mock.calls[0]
-    if (call === undefined) {
-      throw new Error("Expected the plugin to subscribe to the updated RPC event")
+  const emitUpdated: UpdatedHandler = (event): void => {
+    for (const [name, handler] of onSpy.mock.calls) {
+      if (name === "updated") handler(event)
     }
-    const [name, handler] = call
-    if (name !== "updated") {
-      throw new Error(`Expected the plugin to subscribe to 'updated', got '${name}'`)
-    }
-    return handler
   }
   const context: Context = {
     options: {},
@@ -187,7 +181,7 @@ const makeFixture = (themeMode: "light" | "dark"): Fixture => {
       },
     },
   }
-  return { context, toasts, subscribed, unsubscribe, slots, updatedHandler }
+  return { context, toasts, subscribed, unsubscribe, slots, emitUpdated }
 }
 
 const eventPayload = (
@@ -204,33 +198,25 @@ const eventPayload = (
 const THEME_MODES: ReadonlyArray<"light" | "dark"> = ["light", "dark"]
 
 for (const themeMode of THEME_MODES) {
-  test(`native TODO toast and setup cleanup (${themeMode})`, (): void => {
+  test(`TODO updates stay silent and setup cleans up (${themeMode})`, (): void => {
     const fixture: Fixture = makeFixture(themeMode)
     const setupResult: Promise<Cleanup | void> | Cleanup | void = plugin.setup(fixture.context)
     if (typeof setupResult !== "function") {
       throw new Error("Expected TUI plugin setup to return a synchronous cleanup")
     }
     const cleanup: Cleanup = setupResult
-    expect(fixture.subscribed).toEqual(["updated"])
-    const handler: UpdatedHandler = fixture.updatedHandler()
+    const handler: UpdatedHandler = fixture.emitUpdated
 
     handler(eventPayload("- [pending|high] Alpha\n+ [completed|high] Alpha", "[✓] Alpha · high"))
-    expect(fixture.toasts).toEqual([
-      {
-        title: "TODO updated",
-        message: "[✓] Alpha · high",
-        variant: "info",
-        sessionID: SESSION_ID,
-      },
-    ])
+    expect(fixture.toasts).toEqual([])
 
     handler(eventPayload("- [pending|high] Alpha\n- [pending|medium] Beta", ""))
     handler(eventPayload("- [pending|high] Alpha\n+ [pending|high] Alpha", ""))
     handler(eventPayload("", ""))
-    expect(fixture.toasts).toHaveLength(1)
+    expect(fixture.toasts).toHaveLength(0)
 
     cleanup()
-    expect(fixture.unsubscribe.calls).toBe(1)
+    expect(fixture.unsubscribe.calls).toBe(fixture.subscribed.length)
     expect(fixture.slots.map((slot): SlotPath | undefined => slot.target)).toEqual([
       "sidebar.content",
       "session.panel",

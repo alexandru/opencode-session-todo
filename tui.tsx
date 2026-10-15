@@ -65,15 +65,6 @@ export default Plugin.define({
     const [sidebarView, updateSidebarView] = ctx.storage.store("sidebar", {
       initial: { open: true },
     })
-    const notify: () => void = api.events.on("updated", (event): void => {
-      if (event.data.summary === "") return
-      ctx.ui.toast.show({
-        title: "TODO updated",
-        message: event.data.summary,
-        variant: "info",
-        sessionID: event.data.sessionID,
-      })
-    })
     const List = (props: Props): JSX.Element => {
       const [view, setView] = createSignal<View>({ status: "loading" })
       createEffect((): void => {
@@ -287,7 +278,6 @@ export default Plugin.define({
     return (): void => {
       sidebar()
       panel()
-      notify()
     }
   },
 })

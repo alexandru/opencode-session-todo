@@ -14,6 +14,12 @@ Read this session’s saved TODO list and storage path.
 
 export const TodoLifecycleInstructions: string = `### TODO lifecycle
 
+- You MUST create a TODO list when you have more than one work item to track.
+- You MUST NOT create a TODO list for a straightforward question or a single work item.
+- You MUST NOT split a single work item into artificial steps just to justify a TODO list.
+
+The following rules apply only when a TODO list is needed or already tracks unfinished work.
+
 - You MUST keep this session's TODO list synchronized with the requested work and its actual progress.
 - You MUST preserve existing tasks, order, statuses, and priorities unless actual progress or the user's instructions require a change.
 - You MUST mark a task in_progress before starting it. You MUST keep at most one task in_progress.
