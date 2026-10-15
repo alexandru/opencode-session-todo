@@ -1,6 +1,6 @@
 {
   "name": "opencode-session-todo",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Session-local todo.txt tools and TUI for OpenCode V2",
   "homepage": "https://github.com/alexandru/opencode-todo#readme",
   "bugs": {
