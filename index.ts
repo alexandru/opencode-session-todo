@@ -13,7 +13,10 @@ import { diffTodos } from "./src/diff.ts"
 import {
   TodoInstructions,
   TodoLifecycleInstructions,
+  TodoNamespaceDescription,
+  TodoReadAliasDescription,
   TodoReadInstructions,
+  TodoWriteAliasDescription,
   TodoWriteInstructions,
 } from "./src/instructions.ts"
 import { Snapshot, TodoError, Todos } from "./src/model.ts"
@@ -107,6 +110,16 @@ export const register = (ctx: TodoPluginContext): Effect.Effect<void, never, Sco
       return session
     })
 
+    const requireRoot = (session: Session.Info): Effect.Effect<Session.Info, Tool.Error> =>
+      session.parentID === undefined
+        ? Effect.succeed(session)
+        : Effect.fail(
+          new Tool.Error({
+            message:
+              "TODO tools are only available in root sessions. Subagent sessions cannot read or update the session's TODO list.",
+          }),
+        )
+
     const directoryFor = (session: Session.Info): Effect.Effect<SessionDirectory, TodoError> =>
       Schema.decodeUnknownEffect(SessionDirectory)({
         directory: session.location.directory,
@@ -135,6 +148,7 @@ export const register = (ctx: TodoPluginContext): Effect.Effect<void, never, Sco
     )(function*(input, context): Effect.fn.Return<Tool.Result<typeof Snapshot>, Tool.Error> {
       const session: Session.Info = yield* getSession(context.sessionID).pipe(
         Effect.mapError(toolError),
+        Effect.flatMap(requireRoot),
       )
       const agent: Agent.Info = (yield* ctx.agent
         .get({ agentID: context.agent })
@@ -186,19 +200,26 @@ export const register = (ctx: TodoPluginContext): Effect.Effect<void, never, Sco
     const executeRead: Tool.Info<typeof ReadInput, typeof Snapshot>["execute"] = (
       _input,
       context,
-    ): Effect.Effect<Tool.Result<typeof Snapshot>, Tool.Error> => {
-      return read(context.sessionID).pipe(
-        Effect.map(
-          (snapshot): Tool.Result<typeof Snapshot> => ({
-            output: snapshot,
-            content: JSON.stringify(snapshot),
-          }),
-        ),
-        Effect.mapError(toolError),
-      )
-    }
+    ): Effect.Effect<Tool.Result<typeof Snapshot>, Tool.Error> =>
+      Effect.gen(function*(): Effect.fn.Return<Tool.Result<typeof Snapshot>, Tool.Error> {
+        const session: Session.Info = yield* getSession(context.sessionID).pipe(
+          Effect.mapError(toolError),
+          Effect.flatMap(requireRoot),
+        )
+        return yield* directoryFor(session).pipe(
+          Effect.flatMap(store.read),
+          Effect.map(
+            (snapshot): Tool.Result<typeof Snapshot> => ({
+              output: snapshot,
+              content: JSON.stringify(snapshot),
+            }),
+          ),
+          Effect.mapError(toolError),
+        )
+      })
 
     yield* ctx.tool.transform((editor): void => {
+      editor.namespace({ name: "todo", description: TodoNamespaceDescription })
       editor.add({
         name: "todowrite",
         description: `${TodoWriteInstructions}\n\n${TodoLifecycleInstructions}`,
@@ -213,6 +234,22 @@ export const register = (ctx: TodoPluginContext): Effect.Effect<void, never, Sco
         input: ReadInput,
         output: Snapshot,
         options: { codemode: false, permission: "todowrite" },
+        execute: executeRead,
+      })
+      editor.add({
+        name: "write",
+        description: TodoWriteAliasDescription,
+        input: WriteInput,
+        output: Snapshot,
+        options: { namespace: "todo", codemode: true, pinned: true, permission: "todowrite" },
+        execute: executeWrite,
+      })
+      editor.add({
+        name: "read",
+        description: TodoReadAliasDescription,
+        input: ReadInput,
+        output: Snapshot,
+        options: { namespace: "todo", codemode: true, pinned: true, permission: "todowrite" },
         execute: executeRead,
       })
     })

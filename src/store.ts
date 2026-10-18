@@ -65,21 +65,31 @@ const requireDirectory = async (directory: string): Promise<void> => {
   }
 }
 
-const load = Effect.fnUntraced(function*(path: string): Effect.fn.Return<Document, TodoError> {
-  const text: string = yield* io(`Cannot read ${path}`, async (): Promise<string> => {
-    try {
-      const info: Stats = await lstat(path)
-      if (!info.isFile()) {
-        throw new Error("todo.txt must be a regular file")
-      }
-      return await readFile(path, "utf8")
-    } catch (error) {
-      if (missing(error)) return ""
-      throw error
-    }
-  })
-  return yield* parse(text)
-})
+interface LoadedDocument extends Document {
+  readonly exists: boolean
+}
+
+const load = Effect.fnUntraced(
+  function*(path: string): Effect.fn.Return<LoadedDocument, TodoError> {
+    const file: { readonly text: string; readonly exists: boolean } = yield* io(
+      `Cannot read ${path}`,
+      async (): Promise<{ readonly text: string; readonly exists: boolean }> => {
+        try {
+          const info: Stats = await lstat(path)
+          if (!info.isFile()) {
+            throw new Error("todo.txt must be a regular file")
+          }
+          return { text: await readFile(path, "utf8"), exists: true }
+        } catch (error) {
+          if (missing(error)) return { text: "", exists: false }
+          throw error
+        }
+      },
+    )
+    const document: Document = yield* parse(file.text)
+    return { ...document, exists: file.exists }
+  },
+)
 
 const checkDirectory = Effect.fnUntraced(function*(
   session: SessionDirectory,
@@ -132,12 +142,15 @@ export const makeTodoStore: Effect.Effect<TodoStore> = Effect.gen(
           Effect.gen(function*(): Effect.fn.Return<WriteResult, TodoError> {
             const path: string = pathFor(session)
             yield* ensureDirectory(session)
-            const previous: Document = yield* load(path)
+            const previous: LoadedDocument = yield* load(path)
             if (expected !== undefined && !sameTodos(expected, previous.todos)) {
               return yield* new TodoError({
                 message:
-                  "The stored todo list does not match the `previous` list you sent. Use todoread, then retry todowrite with the refreshed `previous` list.",
+                  "The stored todo list does not match the `previous` list you sent. Use todoread or tools.todo.read(), then retry todowrite with the refreshed `previous` list.",
               })
+            }
+            if (previous.exists && sameTodos(todos, previous.todos)) {
+              return { path, todos, previous: previous.todos }
             }
             const temporary: string = `${path}.${randomUUID()}.tmp`
             const today: string = DateTime.formatIsoDateUtc(yield* DateTime.now)
@@ -149,8 +162,9 @@ export const makeTodoStore: Effect.Effect<TodoStore> = Effect.gen(
                   flag: "wx",
                 })
                 await rename(temporary, path)
-              } finally {
+              } catch (error) {
                 await rm(temporary, { force: true })
+                throw error
               }
             })
             return { path, todos, previous: previous.todos }

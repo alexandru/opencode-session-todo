@@ -31,4 +31,4 @@ Reload OpenCode and reopen the TUI.
 - **Keep tasks in view** in the sidebar; open `/todos` for the full list.
 - **Own the file** at `.agents/sessions/<session-id>/todo.txt`.
 
-[Usage & permissions](USAGE.md) · [Development & publishing](docs/development.md) · [MIT](LICENSE)
+[MIT](LICENSE)

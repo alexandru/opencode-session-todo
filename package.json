@@ -1,6 +1,6 @@
 {
   "name": "opencode-session-todo",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Session-local todo.txt tools and TUI for OpenCode V2",
   "homepage": "https://github.com/alexandru/opencode-todo#readme",
   "bugs": {
@@ -23,10 +23,8 @@
     "dist",
     "rpc.ts",
     "src",
-    "USAGE.md",
     "LICENSE",
-    "README.md",
-    "docs/development.md"
+    "README.md"
   ],
   "scripts": {
     "build": "bun run build.ts",

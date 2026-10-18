@@ -17,17 +17,16 @@ import {
 import { TodoRpc } from "./rpc.ts"
 import { type Snapshot, type Todo } from "./src/model.ts"
 import { projectTodos, SidebarOptions, type TodoProjection } from "./src/sidebar.ts"
-import { formatTodo } from "./src/summary.ts"
+import { formatTodo, todoSymbols } from "./src/summary.ts"
 
 type View =
   | { readonly status: "loading" }
   | { readonly status: "ready"; readonly snapshot: Snapshot }
   | { readonly status: "error"; readonly message: string }
 
-interface Props {
-  readonly sessionID: string
-  readonly full?: boolean
-}
+type Props =
+  | { readonly sessionID: string; readonly full: true; readonly onClose: () => void }
+  | { readonly sessionID: string; readonly full?: false; readonly onClose?: never }
 
 const colorFor = (
   status: Todo["status"],
@@ -43,6 +42,12 @@ const colorFor = (
     case "cancelled":
       return theme.text.feedback.error.base
   }
+}
+
+const priorityBadge: Readonly<Record<Todo["priority"], string>> = {
+  high: "(A)",
+  medium: "(B)",
+  low: "(C)",
 }
 
 const Message = Schema.Struct({ message: Schema.String })
@@ -151,64 +156,125 @@ export default Plugin.define({
       }
       const visible: Accessor<boolean> = (): boolean =>
         Boolean(props.full || snapshot()?.todos.length || error())
-      return (
-        <Show when={visible()}>
-          <box flexDirection="column" gap={0} paddingTop={1}>
-            <box
-              flexDirection="row"
-              gap={1}
-              onMouseDown={(event: MouseEvent): void => {
-                if (props.full) return
-                event.stopPropagation()
-                void updateSidebarView((draft): void => {
-                  draft.open = !draft.open
-                }).catch((error: unknown): void => {
-                  ctx.ui.toast.show({
-                    title: "Todo sidebar",
-                    message: `Cannot save expanded state: ${messageFor(error)}`,
-                    variant: "error",
-                  })
-                })
-              }}
-            >
-              <Show when={!props.full}>
-                <text fg={ctx.theme.text.base}>{sidebarView.open ? "▼" : "▶"}</text>
-              </Show>
-              <text fg={ctx.theme.text.base}>
-                <b>TODO</b>
-                <span style={{ fg: ctx.theme.text.muted }}>{" "}({active()} remaining)</span>
+      const Header = (): JSX.Element => (
+        <box
+          flexDirection="row"
+          gap={1}
+          flexShrink={0}
+          paddingBottom={props.full ? 1 : 0}
+          onMouseDown={(event: MouseEvent): void => {
+            if (props.full) return
+            event.stopPropagation()
+            void updateSidebarView((draft): void => {
+              draft.open = !draft.open
+            }).catch((error: unknown): void => {
+              ctx.ui.toast.show({
+                title: "Todo sidebar",
+                message: `Cannot save expanded state: ${messageFor(error)}`,
+                variant: "error",
+              })
+            })
+          }}
+        >
+          <Show when={!props.full}>
+            <text fg={ctx.theme.text.base}>{sidebarView.open ? "▼" : "▶"}</text>
+          </Show>
+          <box flexGrow={1} flexShrink={1} minWidth={0}>
+            <text fg={ctx.theme.text.base}>
+              <b>TODO</b>
+              <span style={{ fg: ctx.theme.text.muted }}>{" "}({active()} remaining)</span>
+            </text>
+          </box>
+          <Show when={props.full ? props.onClose : undefined}>
+            {(onClose: Accessor<() => void>): JSX.Element => (
+              <text
+                fg={ctx.theme.text.muted}
+                flexShrink={0}
+                selectable={false}
+                onMouseDown={(event: MouseEvent): void => {
+                  event.stopPropagation()
+                  onClose()()
+                }}
+              >
+                ×
               </text>
-            </box>
-            <Show when={props.full || sidebarView.open}>
-              <Show when={props.full}>
-                <text fg={ctx.theme.text.muted}>{snapshot()?.path ?? "Loading todo.txt…"}</text>
-              </Show>
-              <Show when={error()}>
-                <text fg={ctx.theme.text.feedback.error.base}>Cannot read todos: {error()}</text>
-              </Show>
-              <Show when={props.full && view().status === "ready" && todos().length === 0}>
-                <text fg={ctx.theme.text.muted}>No todos for this session.</text>
-              </Show>
+            )}
+          </Show>
+        </box>
+      )
+      const Body = (): JSX.Element => (
+        <>
+          <Show when={error()}>
+            <text fg={ctx.theme.text.feedback.error.base}>Cannot read todos: {error()}</text>
+          </Show>
+          <Show when={props.full && view().status === "ready" && todos().length === 0}>
+            <text fg={ctx.theme.text.muted}>No todos for this session.</text>
+          </Show>
+          <Show
+            when={props.full}
+            fallback={
               <For each={todos()}>
                 {(todo): JSX.Element => (
-                  <text fg={colorFor(todo.status, ctx.theme)}>
-                    {formatTodo(todo)}
-                  </text>
+                  <text fg={colorFor(todo.status, ctx.theme)}>{formatTodo(todo)}</text>
                 )}
               </For>
-              <Show when={more()}>
-                <text
-                  fg={ctx.theme.text.feedback.info.base}
-                  onMouseDown={(event: MouseEvent): void => {
-                    event.stopPropagation()
-                    ctx.ui.panel.open("session-todo.list")
-                  }}
-                >
-                  Show all {more()} todos →
-                </text>
-              </Show>
-            </Show>
-          </box>
+            }
+          >
+            <For each={todos()}>
+              {(todo): JSX.Element => (
+                <box flexDirection="row" gap={1}>
+                  <text
+                    fg={colorFor(todo.status, ctx.theme)}
+                    width={3}
+                    flexShrink={0}
+                  >
+                    {todoSymbols[todo.status]}
+                  </text>
+                  <box flexGrow={1} flexShrink={1} minWidth={0}>
+                    <text fg={colorFor(todo.status, ctx.theme)} wrapMode="word">
+                      {todo.content}
+                    </text>
+                  </box>
+                  <text fg={ctx.theme.text.muted} width={3} flexShrink={0}>
+                    {priorityBadge[todo.priority]}
+                  </text>
+                </box>
+              )}
+            </For>
+          </Show>
+          <Show when={more()}>
+            <text
+              fg={ctx.theme.text.feedback.info.base}
+              onMouseDown={(event: MouseEvent): void => {
+                event.stopPropagation()
+                ctx.ui.panel.open("session-todo.list")
+              }}
+            >
+              Show all {more()} todos →
+            </text>
+          </Show>
+        </>
+      )
+      return (
+        <Show when={visible()}>
+          <Show
+            when={props.full}
+            fallback={
+              <box flexDirection="column" gap={0} paddingTop={1}>
+                <Header />
+                <Show when={sidebarView.open}>
+                  <Body />
+                </Show>
+              </box>
+            }
+          >
+            <box flexDirection="column" flexGrow={1} minHeight={0} padding={1}>
+              <Header />
+              <scrollbox flexGrow={1} flexBasis={0} minHeight={0}>
+                <Body />
+              </scrollbox>
+            </box>
+          </Show>
         </Show>
       )
     }
@@ -231,22 +297,7 @@ export default Plugin.define({
           ],
         }),
       )
-      return (
-        <box flexDirection="column" flexGrow={1} padding={1}>
-          <text
-            fg={ctx.theme.text.base}
-            onMouseDown={(event: MouseEvent): void => {
-              event.stopPropagation()
-              props.close()
-            }}
-          >
-            Close × · Esc when focused · Ctrl+P to toggle
-          </text>
-          <scrollbox flexGrow={1}>
-            <List sessionID={props.sessionID} full />
-          </scrollbox>
-        </box>
-      )
+      return <List sessionID={props.sessionID} full onClose={props.close} />
     }
     const panel: () => void = ctx.ui.slot({
       append: "session.panel",

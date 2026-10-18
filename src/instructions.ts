@@ -4,7 +4,7 @@ Replace this session’s TODO list.
 
 - You MUST pass the last known saved list as \`previous\`; use \`[]\` when known empty.
 - You SHOULD reuse the returned saved list for subsequent writes.
-- On conflict, you MUST call \`todoread\` and retry.`
+- On conflict, you MUST refresh the saved list and retry.`
 
 export const TodoReadInstructions: string = `### \`todoread\`
 
@@ -29,5 +29,30 @@ The following rules apply only when a TODO list is needed or already tracks unfi
 - Before your final response, you MUST reconcile the list with what was actually done and accurately retain unfinished work.
 - You SHOULD keep task descriptions concise and actionable.`
 
+export const TodoCodeModeInstructions: string = `### Code Mode
+
+- You SHOULD prefer Code Mode for TODO updates.
+- When the current list is known, call \`tools.todo.write\` directly with that \`previous\` list; do not read first.
+- Read with \`tools.todo.read()\` only when the saved list is unknown or a write reports a conflict.
+- When you need both, perform them sequentially in one execute call: await the read, pass the returned \`todos\` as \`previous\`, await the write, and return only the final snapshot.
+- You MUST NOT use \`Promise.all\` for dependent TODO operations.
+- You MUST NOT batch lifecycle transitions in one call.
+
+\`\`\`ts
+const { todos } = await tools.todo.read()
+return await tools.todo.write({
+  previous: todos,
+  todos: [...todos, { content: "Run the tests", status: "pending", priority: "high" }],
+})
+\`\`\``
+
+export const TodoWriteAliasDescription: string = "Replace this session’s TODO list."
+
+export const TodoReadAliasDescription: string =
+  "Read this session’s saved TODO list and storage path."
+
+export const TodoNamespaceDescription: string =
+  "Session TODO list tools. Prefer one execute call per update: write with the last known list; read only when the saved list is unknown or a write reports a conflict."
+
 export const TodoInstructions: string =
-  `${TodoWriteInstructions}\n\n${TodoReadInstructions}\n\n${TodoLifecycleInstructions}`
+  `${TodoWriteInstructions}\n\n${TodoReadInstructions}\n\n${TodoLifecycleInstructions}\n\n${TodoCodeModeInstructions}`

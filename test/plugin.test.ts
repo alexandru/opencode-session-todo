@@ -12,7 +12,7 @@ import { SessionMessage } from "@opencode/schema/session-message"
 import { Tool } from "@opencode/schema/tool"
 import { afterEach, expect, test } from "bun:test"
 import { Effect, Result, Schema, type Scope, type Types } from "effect"
-import { lstat, mkdtemp, readdir, readFile, rm } from "node:fs/promises"
+import { lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { register, type TodoPluginContext } from "../index.ts"
@@ -85,13 +85,22 @@ type ContextHook = (event: SessionContext) => Effect.Effect<void, never>
 interface TodoHost {
   readonly context: TodoPluginContext
   readonly tools: ReadonlyMap<string, Tool.Info>
+  readonly namespaces: ReadonlyArray<Tool.Namespace>
   readonly events: ReadonlyArray<ReadonlyArray<unknown>>
   readonly dispatchContext: ContextHook
   readonly activeContextHooks: () => number
 }
 
+const effectiveToolName = (tool: Tool.Info): string => {
+  const name: string = tool.name.replace(/[^a-zA-Z0-9_-]/g, "_")
+  return tool.options?.namespace === undefined
+    ? name
+    : `${tool.options.namespace.replaceAll(".", "_")}_${name}`
+}
+
 const makeHost = (options: HostOptions): TodoHost => {
   const tools: Map<string, Tool.Info> = new Map()
+  const namespaces: Tool.Namespace[] = []
   const events: unknown[][] = []
   const contextHooks: Array<ContextHook> = []
   const editor: ToolEditor = {
@@ -104,9 +113,11 @@ const makeHost = (options: HostOptions): TodoHost => {
       const tool: Tool.Info | undefined = tools.get(id)
       return tool === undefined ? undefined : { ...tool, id }
     },
-    namespace: (): void => {},
+    namespace: (value): void => {
+      namespaces.push(value)
+    },
     add: (tool): void => {
-      tools.set(tool.name, tool)
+      tools.set(effectiveToolName(tool), tool)
     },
     update: (id, update): void => {
       const tool: Tool.Info | undefined = tools.get(id)
@@ -185,7 +196,7 @@ const makeHost = (options: HostOptions): TodoHost => {
 
   const activeContextHooks = (): number => contextHooks.length
 
-  return { context, tools, events, dispatchContext, activeContextHooks }
+  return { context, tools, namespaces, events, dispatchContext, activeContextHooks }
 }
 
 type ToolOutcome = Result.Result<Tool.Result, unknown>
@@ -335,7 +346,7 @@ const sessionHost = (directory: string, session: Session.Info, agent: Agent.Info
     agents: new Map([[agent.id, agent]]),
   })
 
-test("register installs exactly todowrite and todoread with codemode disabled", async (): Promise<void> => {
+test("register installs native todo tools plus codemode aliases under the todo namespace", async (): Promise<void> => {
   const directory: string = await temporary()
   const host: TodoHost = makeHost({
     directory,
@@ -343,13 +354,42 @@ test("register installs exactly todowrite and todoread with codemode disabled", 
     agents: new Map<string, Agent.Info>(),
   })
   await runPlugin(host, Effect.void)
-  expect([...host.tools.keys()]).toEqual(["todowrite", "todoread"])
+  expect([...host.tools.keys()]).toEqual([
+    "todowrite",
+    "todoread",
+    "todo_write",
+    "todo_read",
+  ])
   const todowrite: Tool.Info = requireTool(host, "todowrite")
   const todoread: Tool.Info = requireTool(host, "todoread")
-  expect(todowrite.options?.codemode).toBe(false)
-  expect(todowrite.options?.permission).toBe("todowrite")
-  expect(todoread.options?.codemode).toBe(false)
-  expect(todoread.options?.permission).toBe("todowrite")
+  expect(todowrite.options).toEqual({ codemode: false, permission: "todowrite" })
+  expect(todoread.options).toEqual({ codemode: false, permission: "todowrite" })
+  expect(todowrite.output).toBe(Snapshot)
+  expect(todoread.output).toBe(Snapshot)
+  const aliasWrite: Tool.Info = requireTool(host, "todo_write")
+  const aliasRead: Tool.Info = requireTool(host, "todo_read")
+  expect(aliasWrite.name).toBe("write")
+  expect(aliasRead.name).toBe("read")
+  expect(aliasWrite.options).toEqual({
+    namespace: "todo",
+    codemode: true,
+    pinned: true,
+    permission: "todowrite",
+  })
+  expect(aliasRead.options).toEqual({
+    namespace: "todo",
+    codemode: true,
+    pinned: true,
+    permission: "todowrite",
+  })
+  expect(aliasWrite.output).toBe(Snapshot)
+  expect(aliasRead.output).toBe(Snapshot)
+  expect(host.namespaces).toHaveLength(1)
+  expect(host.namespaces[0]?.name).toBe("todo")
+  expect(host.namespaces[0]?.description).toContain("one execute call per update")
+  expect(host.namespaces[0]?.description).toContain("last known list")
+  expect(aliasWrite.description).toBe("Replace this session’s TODO list.")
+  expect(aliasRead.description).toBe("Read this session’s saved TODO list and storage path.")
 })
 
 test("todowrite persists exact bytes and todoread returns the same list and path", async (): Promise<void> => {
@@ -402,6 +442,117 @@ test("todowrite persists exact bytes and todoread returns the same list and path
       summary: "[•] Ship +plugin @opencode · high\n[ ] Read docs · medium",
     },
   ])
+})
+
+test("codemode aliases read and write the same structured snapshot as native tools", async (): Promise<void> => {
+  const directory: string = await temporary()
+  const session: Session.Info = sessionInfo(directory, [rule("todowrite", "*", "allow")])
+  const agent: Agent.Info = agentInfo([rule("todowrite", "*", "allow")])
+  const host: TodoHost = sessionHost(directory, session, agent)
+  const todos: Todos = Schema.decodeUnknownSync(Todos)([
+    { content: "Alias write", status: "in_progress", priority: "high" },
+    { content: "Native read", status: "pending", priority: "medium" },
+  ])
+  const path: string = join(directory, ".agents", "sessions", "ses_tools", "todo.txt")
+  const context: Tool.Context = toolContext(session.id, agent.id)
+  const outcome = await runPlugin(
+    host,
+    Effect.gen(function*(): Effect.fn.Return<
+      {
+        readonly write: ToolOutcome
+        readonly aliasRead: ToolOutcome
+        readonly nativeRead: ToolOutcome
+      },
+      never
+    > {
+      const write: ToolOutcome = yield* callTool(
+        host,
+        "todo_write",
+        { previous: [], todos },
+        context,
+      )
+      const aliasRead: ToolOutcome = yield* callTool(host, "todo_read", {}, context)
+      const nativeRead: ToolOutcome = yield* callTool(host, "todoread", {}, context)
+      return { write, aliasRead, nativeRead }
+    }),
+  )
+  const written: Tool.Result = expectSuccess(outcome.write)
+  expect(Schema.decodeUnknownSync(Snapshot)(written.output)).toEqual({ path, todos })
+  expect(written.content).toStartWith(
+    "Todo list updated:\n+ [in_progress|high] Alias write\n+ [pending|medium] Native read\n\n",
+  )
+  const aliasSnapshot: Tool.Result = expectSuccess(outcome.aliasRead)
+  expect(Schema.decodeUnknownSync(Snapshot)(aliasSnapshot.output)).toEqual({ path, todos })
+  expect(snapshotOf(aliasSnapshot)).toEqual({ path, todos })
+  expect(snapshotOf(expectSuccess(outcome.nativeRead))).toEqual({ path, todos })
+  expect(await readFile(path, "utf8")).toBe(
+    "(A) Alias write status:in_progress\n(B) Native read\n",
+  )
+  expect(host.events).toHaveLength(1)
+})
+
+test("codemode alias todowrite enforces the same permissions and conflicts as native todowrite", async (): Promise<void> => {
+  const cases: ReadonlyArray<readonly [string, readonly Permission.Rule[]]> = [
+    ["deny", [rule("todowrite", "*", "deny")]],
+    ["ask", [rule("todowrite", "*", "ask")]],
+    ["no matching allow", [rule("todoread", "*", "allow")]],
+  ]
+  for (const [label, permissions] of cases) {
+    const directory: string = await temporary()
+    const session: Session.Info = sessionInfo(directory, permissions)
+    const agent: Agent.Info = agentInfo(permissions)
+    const host: TodoHost = sessionHost(directory, session, agent)
+    const outcome: ToolOutcome = await runPlugin(
+      host,
+      Effect.gen(function*(): Effect.fn.Return<ToolOutcome, never> {
+        return yield* callTool(
+          host,
+          "todo_write",
+          { previous: [], todos: [{ content: "Blocked", status: "pending", priority: "high" }] },
+          toolContext(session.id, agent.id),
+        )
+      }),
+    )
+    const failure: Tool.Error = expectToolError(outcome)
+    expect(failure.message, label).toContain("requires an allow permission")
+    expect(host.events, label).toHaveLength(0)
+    expect(await pathExists(join(directory, ".agents")), label).toBe(false)
+  }
+  const directory: string = await temporary()
+  const session: Session.Info = sessionInfo(directory, [rule("todowrite", "*", "allow")])
+  const agent: Agent.Info = agentInfo([rule("todowrite", "*", "allow")])
+  const host: TodoHost = sessionHost(directory, session, agent)
+  const path: string = join(directory, ".agents", "sessions", "ses_tools", "todo.txt")
+  const context: Tool.Context = toolContext(session.id, agent.id)
+  await runPlugin(
+    host,
+    Effect.gen(function*(): Effect.fn.Return<void> {
+      expectSuccess(
+        yield* callTool(
+          host,
+          "todo_write",
+          { previous: [], todos: [{ content: "Alpha", status: "pending", priority: "high" }] },
+          context,
+        ),
+      )
+    }),
+  )
+  const stale: ToolOutcome = await runPlugin(
+    host,
+    Effect.gen(function*(): Effect.fn.Return<ToolOutcome, never> {
+      return yield* callTool(
+        host,
+        "todo_write",
+        { previous: [], todos: [{ content: "Beta", status: "pending", priority: "medium" }] },
+        context,
+      )
+    }),
+  )
+  const failure: Tool.Error = expectToolError(stale)
+  expect(failure.message).toContain("does not match the `previous` list")
+  expect(failure.message).toContain("todoread")
+  expect(await readFile(path, "utf8")).toBe("(A) Alpha\n")
+  expect(host.events).toHaveLength(1)
 })
 
 test("concurrent writes with the same previous list cannot both succeed", async (): Promise<void> => {
@@ -855,7 +1006,7 @@ Replace this session’s TODO list.
 
 - You MUST pass the last known saved list as \`previous\`; use \`[]\` when known empty.
 - You SHOULD reuse the returned saved list for subsequent writes.
-- On conflict, you MUST call \`todoread\` and retry.`
+- On conflict, you MUST refresh the saved list and retry.`
   const readRules: string = `### \`todoread\`
 
 Read this session’s saved TODO list and storage path.
@@ -874,6 +1025,38 @@ Read this session’s saved TODO list and storage path.
     expect(text).not.toContain("Use it to obtain the `previous` list")
     expect(text).not.toContain("take `previous` from the latest todoread or todowrite result")
   }
+})
+
+test("injected todo instructions carry compact Code Mode guidance with a sequential example", async (): Promise<void> => {
+  const directory: string = await temporary()
+  const host: TodoHost = makeHost({
+    directory,
+    sessions: new Map([["ses_hook", sessionInfo(directory, [], "ses_hook")]]),
+    agents: new Map<string, Agent.Info>(),
+  })
+  const event: SessionContext = sessionContext([], bothTodoTools())
+  await runPlugin(host, host.dispatchContext(event))
+  expect(event.system).toHaveLength(1)
+  const injected: string = event.system[0]?.text ?? ""
+  const rules: ReadonlyArray<string> = [
+    "You SHOULD prefer Code Mode for TODO updates",
+    "call `tools.todo.write` directly with that `previous` list; do not read first",
+    "Read with `tools.todo.read()` only when the saved list is unknown or a write reports a conflict",
+    "perform them sequentially in one execute call",
+    "return only the final snapshot",
+    "You MUST NOT use `Promise.all` for dependent TODO operations",
+    "You MUST NOT batch lifecycle transitions in one call",
+  ]
+  for (const rule of rules) {
+    expect(injected, `missing: ${rule}`).toContain(rule)
+  }
+  expect(injected).toContain(
+    `const { todos } = await tools.todo.read()
+return await tools.todo.write({
+  previous: todos,
+  todos: [...todos, { content: "Run the tests", status: "pending", priority: "high" }],
+})`,
+  )
 })
 
 test("child sessions see neither todo tools nor todo instructions", async (): Promise<void> => {
@@ -896,7 +1079,7 @@ test("child sessions see neither todo tools nor todo instructions", async (): Pr
   await runPlugin(host, host.dispatchContext(event))
   expect(event.tools).toEqual({ unrelated })
   expect(event.system).toEqual([base])
-  expect(host.tools.size).toBe(2)
+  expect(host.tools.size).toBe(4)
 })
 
 test("child sessions hide either todo tool even when the other is already absent", async (): Promise<void> => {
@@ -921,6 +1104,56 @@ test("child sessions hide either todo tool even when the other is already absent
       }
     }),
   )
+})
+
+test("child sessions reject native and codemode alias todo tools without changing data", async (): Promise<void> => {
+  const directory: string = await temporary()
+  const child: Session.Info = {
+    ...sessionInfo(directory, [rule("todowrite", "*", "allow")], "ses_child"),
+    parentID: Session.ID.make("ses_parent"),
+  }
+  const agent: Agent.Info = agentInfo([rule("todowrite", "*", "allow")])
+  const host: TodoHost = sessionHost(directory, child, agent)
+  const path: string = join(directory, ".agents", "sessions", "ses_child", "todo.txt")
+  await mkdir(join(directory, ".agents", "sessions", "ses_child"), { recursive: true })
+  await writeFile(path, "(A) Kept\n", "utf8")
+  const context: Tool.Context = toolContext(child.id, agent.id)
+  const outcomes = await runPlugin(
+    host,
+    Effect.gen(function*(): Effect.fn.Return<
+      {
+        readonly nativeWrite: ToolOutcome
+        readonly nativeRead: ToolOutcome
+        readonly aliasWrite: ToolOutcome
+        readonly aliasRead: ToolOutcome
+      },
+      never
+    > {
+      const blocked: Todos = Schema.decodeUnknownSync(Todos)([
+        { content: "Blocked", status: "pending", priority: "high" },
+      ])
+      const nativeWrite: ToolOutcome = yield* callTool(
+        host,
+        "todowrite",
+        { previous: [], todos: blocked },
+        context,
+      )
+      const nativeRead: ToolOutcome = yield* callTool(host, "todoread", {}, context)
+      const aliasWrite: ToolOutcome = yield* callTool(
+        host,
+        "todo_write",
+        { previous: [], todos: blocked },
+        context,
+      )
+      const aliasRead: ToolOutcome = yield* callTool(host, "todo_read", {}, context)
+      return { nativeWrite, nativeRead, aliasWrite, aliasRead }
+    }),
+  )
+  for (const [label, outcome] of Object.entries(outcomes)) {
+    expect(expectToolError(outcome).message, label).toContain("root sessions")
+  }
+  expect(await readFile(path, "utf8")).toBe("(A) Kept\n")
+  expect(host.events).toHaveLength(0)
 })
 
 test("an unresolved session hides todo tools without failing the model request", async (): Promise<void> => {
@@ -1002,7 +1235,7 @@ test("context hook injects without replacing system messages options tools or co
   expect(messages).toHaveLength(0)
   expect(Object.keys(options)).toHaveLength(0)
   expect(Object.keys(tools)).toEqual(["todowrite", "todoread"])
-  expect(host.tools.size).toBe(2)
+  expect(host.tools.size).toBe(4)
 })
 
 test("repeated dispatch of the same event does not duplicate the instruction", async (): Promise<void> => {

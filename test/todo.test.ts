@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import { Effect, Schema } from "effect"
+import type { Stats } from "node:fs"
 import { lstat, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -37,6 +38,13 @@ const pathExists = async (path: string): Promise<boolean> => {
   } catch {
     return false
   }
+}
+
+const identity = async (
+  path: string,
+): Promise<{ readonly inode: number; readonly modified: number }> => {
+  const info: Stats = await lstat(path)
+  return { inode: info.ino, modified: info.mtimeMs }
 }
 
 const priorityFor = (index: number): "high" | "medium" | "low" => {
@@ -183,6 +191,80 @@ test("writes replace the list in input order and an empty list clears the file",
   expect((await Effect.runPromise(store.read(session))).todos).toEqual(emptyTodos)
 })
 
+test("writing an identical existing list leaves the file untouched", async (): Promise<void> => {
+  const directory: string = await temporary()
+  const store: TodoStore = await newStore()
+  const session: SessionDirectory = sessionDirectory(directory, "ses_identical")
+  const sessionPath: string = join(directory, ".agents", "sessions", "ses_identical")
+  const path: string = join(sessionPath, "todo.txt")
+  const todos: Todos = validTodos("Unchanged")
+  await Effect.runPromise(store.write(session, todos))
+  const before: { readonly inode: number; readonly modified: number } = await identity(path)
+  const rewritten: WriteResult = await Effect.runPromise(store.write(session, todos))
+  const after: { readonly inode: number; readonly modified: number } = await identity(path)
+  expect(rewritten.path).toBe(path)
+  expect(rewritten.todos).toEqual(todos)
+  expect(rewritten.previous).toEqual(todos)
+  expect(after).toEqual(before)
+  expect(await readFile(path, "utf8")).toBe("(A) Unchanged\n")
+  expect(await readdir(sessionPath)).toEqual(["todo.txt"])
+})
+
+test("writing an identical empty list leaves an existing empty file untouched", async (): Promise<void> => {
+  const directory: string = await temporary()
+  const store: TodoStore = await newStore()
+  const session: SessionDirectory = sessionDirectory(directory, "ses_identical_empty")
+  const sessionPath: string = join(directory, ".agents", "sessions", "ses_identical_empty")
+  const path: string = join(sessionPath, "todo.txt")
+  await Effect.runPromise(store.write(session, emptyTodos))
+  expect(await pathExists(path)).toBe(true)
+  const before: { readonly inode: number; readonly modified: number } = await identity(path)
+  const rewritten: WriteResult = await Effect.runPromise(store.write(session, emptyTodos))
+  const after: { readonly inode: number; readonly modified: number } = await identity(path)
+  expect(rewritten.path).toBe(path)
+  expect(rewritten.todos).toEqual(emptyTodos)
+  expect(rewritten.previous).toEqual(emptyTodos)
+  expect(after).toEqual(before)
+  expect(await readFile(path, "utf8")).toBe("")
+  expect(await readdir(sessionPath)).toEqual(["todo.txt"])
+})
+
+test("an initial empty write still creates todo.txt", async (): Promise<void> => {
+  const directory: string = await temporary()
+  const store: TodoStore = await newStore()
+  const session: SessionDirectory = sessionDirectory(directory, "ses_empty_initial")
+  const sessionPath: string = join(directory, ".agents", "sessions", "ses_empty_initial")
+  const path: string = join(sessionPath, "todo.txt")
+  const created: WriteResult = await Effect.runPromise(store.write(session, emptyTodos))
+  expect(created.path).toBe(path)
+  expect(created.todos).toEqual(emptyTodos)
+  expect(created.previous).toEqual(emptyTodos)
+  expect(await pathExists(path)).toBe(true)
+  expect(await readFile(path, "utf8")).toBe("")
+  expect((await Effect.runPromise(store.read(session))).todos).toEqual(emptyTodos)
+  expect(await readdir(sessionPath)).toEqual(["todo.txt"])
+})
+
+test("a stale expected list is still rejected without touching an identical file", async (): Promise<void> => {
+  const directory: string = await temporary()
+  const store: TodoStore = await newStore()
+  const session: SessionDirectory = sessionDirectory(directory, "ses_stale")
+  const sessionPath: string = join(directory, ".agents", "sessions", "ses_stale")
+  const path: string = join(sessionPath, "todo.txt")
+  const stored: Todos = validTodos("Stored")
+  await Effect.runPromise(store.write(session, stored))
+  const before: { readonly inode: number; readonly modified: number } = await identity(path)
+  const error: TodoError | undefined = await failureOf(
+    store.write(session, stored, emptyTodos),
+  )
+  expect(error?._tag).toBe("TodoError")
+  expect(error?.message).toContain("does not match the `previous` list")
+  const after: { readonly inode: number; readonly modified: number } = await identity(path)
+  expect(after).toEqual(before)
+  expect(await readFile(path, "utf8")).toBe("(A) Stored\n")
+  expect(await readdir(sessionPath)).toEqual(["todo.txt"])
+})
+
 test("session names isolate lists within a project and across projects", async (): Promise<void> => {
   const first: string = await temporary()
   const second: string = await temporary()
@@ -255,26 +337,34 @@ test("the SessionDirectory schema rejects relative directories and unsafe names"
   rejects({ directory, name: "/" })
 })
 
-test("externally edited CRLF, BOM, blank lines, and metadata survive read and write", async (): Promise<void> => {
+test("externally edited CRLF, BOM, blank lines, and metadata survive read and an identical write", async (): Promise<void> => {
   const directory: string = await temporary()
   const store: TodoStore = await newStore()
   const session: SessionDirectory = sessionDirectory(directory, "ses_external")
   const path: string = join(directory, ".agents", "sessions", "ses_external", "todo.txt")
   await mkdir(join(directory, ".agents", "sessions", "ses_external"), { recursive: true })
-  await writeFile(
-    path,
-    "\uFEFF(A) Alpha +project @context due:2026-01-05\r\n\r\n(B) Beta +other @home due:2026-02-01\r\n",
-  )
+  const external: string =
+    "\uFEFF(A) Alpha +project @context due:2026-01-05\r\n\r\n(B) Beta +other @home due:2026-02-01\r\n"
+  await writeFile(path, external)
   const todos: Todos = Schema.decodeUnknownSync(Todos)([
     { content: "Alpha +project @context due:2026-01-05", status: "pending", priority: "high" },
     { content: "Beta +other @home due:2026-02-01", status: "pending", priority: "medium" },
   ])
   expect((await Effect.runPromise(store.read(session))).todos).toEqual(todos)
+  const before: { readonly inode: number; readonly modified: number } = await identity(path)
   await Effect.runPromise(store.write(session, todos))
+  const after: { readonly inode: number; readonly modified: number } = await identity(path)
+  expect(after).toEqual(before)
+  expect(await readFile(path, "utf8")).toBe(external)
+  const updated: Todos = Schema.decodeUnknownSync(Todos)([
+    { content: "Alpha +project @context due:2026-01-05", status: "pending", priority: "high" },
+    { content: "Beta +other @home due:2026-02-01", status: "in_progress", priority: "medium" },
+  ])
+  await Effect.runPromise(store.write(session, updated))
   expect(await readFile(path, "utf8")).toBe(
-    "(A) Alpha +project @context due:2026-01-05\n(B) Beta +other @home due:2026-02-01\n",
+    "(A) Alpha +project @context due:2026-01-05\n(B) Beta +other @home due:2026-02-01 status:in_progress\n",
   )
-  expect((await Effect.runPromise(store.read(session))).todos).toEqual(todos)
+  expect((await Effect.runPromise(store.read(session))).todos).toEqual(updated)
 })
 
 test("a disk status mismatch fails read and write without touching the file", async (): Promise<void> => {
