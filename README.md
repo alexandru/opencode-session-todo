@@ -28,7 +28,15 @@ Add to `opencode.jsonc`:
 Reload OpenCode and reopen the TUI.
 
 - **Read and write** with `todoread` and `todowrite`, with conflict detection and change diffs.
-- **Keep tasks in view** in the sidebar; open `/todos` for the full list.
+- **Keep tasks in view** in the terminal sidebar or the Desktop side panel; open `/todos` for the full list.
 - **Own the file** at `.agents/sessions/<session-id>/todo.txt`.
+
+## Desktop
+
+The plugin also ships a GUI part for OpenCode Desktop. The **To-Do List** tab is available in the session side panel; open it from **Session todos** in the **+** menu, the `/todos` slash command, or the New tab launcher. It closes like any other tab and reads the same `.agents/sessions/<session-id>/todo.txt` as the TUI.
+
+## Format
+
+The list is a flat todo.txt file. Hierarchy is expressed with numbered prefixes such as `1.` and `1.1.`; the Desktop panel indents sub-items. A numbered parent can be completed only after its numbered sub-tasks are completed or cancelled. Priorities map to todo.txt `(A)` high, `(B)` medium, `(C)` low; the Desktop panel shows the words.
 
 [MIT](LICENSE)
