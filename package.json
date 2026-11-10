@@ -15,11 +15,14 @@
   "exports": {
     ".": "./index.ts",
     "./tui": "./dist/tui.js",
-    "./rpc": "./rpc.ts"
+    "./rpc": "./rpc.ts",
+    "./gui-experimental": "./gui-experimental.cjs"
   },
   "files": [
     "index.ts",
     "tui.tsx",
+    "gui.tsx",
+    "gui-experimental.cjs",
     "dist",
     "rpc.ts",
     "src",
@@ -28,16 +31,19 @@
   ],
   "scripts": {
     "build": "bun run build.ts",
+    "build:gui": "npm --prefix gui-build run build",
     "check": "tsc --noEmit",
+    "check:gui": "npm --prefix gui-build run check",
     "test": "bun test",
     "format": "dprint fmt",
     "format:check": "dprint check",
-    "prepack": "bun run build",
-    "prepublishOnly": "bun run check && bun run test && bun run format:check"
+    "prepack": "bun run build && bun run build:gui",
+    "prepublishOnly": "bun run check && bun run check:gui && bun run test && bun run format:check"
   },
   "dependencies": {
     "@opencode/plugin": "2.0.27",
     "@opencode/schema": "2.0.27",
+    "@opencode/util": "2.0.27",
     "effect": "4.0.1"
   },
   "devDependencies": {

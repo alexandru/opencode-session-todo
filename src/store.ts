@@ -9,9 +9,9 @@ import { type Document, parse, render } from "./todotxt.ts"
 export const SessionDirectory = Schema.Struct({
   directory: Schema.String.check(
     Schema.makeFilter((directory: string): boolean => isAbsolute(directory), {
-      message: "The todo project directory must be absolute",
+      message: "The todo data directory must be absolute",
     }),
-  ).pipe(Schema.brand("TodoProjectDirectory")),
+  ).pipe(Schema.brand("TodoDataDirectory")),
   name: SessionName,
 })
 export type SessionDirectory = typeof SessionDirectory.Type
@@ -56,7 +56,7 @@ const missing = (error: unknown): boolean =>
   Schema.is(Schema.Struct({ code: Schema.Literal("ENOENT") }))(error)
 
 const pathFor = (session: SessionDirectory): string =>
-  join(session.directory, ".agents", "sessions", session.name, "todo.txt")
+  join(session.directory, session.name, "todo.txt")
 
 const requireDirectory = async (directory: string): Promise<void> => {
   const info: Stats = await lstat(directory)
@@ -94,16 +94,20 @@ const load = Effect.fnUntraced(
 const checkDirectory = Effect.fnUntraced(function*(
   session: SessionDirectory,
 ): Effect.fn.Return<void, TodoError> {
-  yield* io("Cannot access session directory", async (): Promise<void> => {
-    let directory: string = await realpath(session.directory)
-    for (const segment of [".agents", "sessions", session.name]) {
-      directory = join(directory, segment)
-      try {
-        await requireDirectory(directory)
-      } catch (error) {
-        if (missing(error)) return
-        throw error
-      }
+  yield* io("Cannot access todo directory", async (): Promise<void> => {
+    let directory: string
+    try {
+      directory = await realpath(session.directory)
+    } catch (error) {
+      if (missing(error)) return
+      throw error
+    }
+    const target: string = join(directory, session.name)
+    try {
+      await requireDirectory(target)
+    } catch (error) {
+      if (missing(error)) return
+      throw error
     }
   })
 })
@@ -111,13 +115,12 @@ const checkDirectory = Effect.fnUntraced(function*(
 const ensureDirectory = Effect.fnUntraced(function*(
   session: SessionDirectory,
 ): Effect.fn.Return<void, TodoError> {
-  yield* io("Cannot prepare session directory", async (): Promise<void> => {
-    let directory: string = await realpath(session.directory)
-    for (const segment of [".agents", "sessions", session.name]) {
-      directory = join(directory, segment)
-      await mkdir(directory, { recursive: true, mode: 0o700 })
-      await requireDirectory(directory)
-    }
+  yield* io("Cannot prepare todo directory", async (): Promise<void> => {
+    await mkdir(session.directory, { recursive: true, mode: 0o700 })
+    const directory: string = await realpath(session.directory)
+    const target: string = join(directory, session.name)
+    await mkdir(target, { recursive: true, mode: 0o700 })
+    await requireDirectory(target)
   })
 })
 

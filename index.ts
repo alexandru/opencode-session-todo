@@ -7,9 +7,10 @@ import { Permission } from "@opencode/schema/permission"
 import { Session } from "@opencode/schema/session"
 import { Tool } from "@opencode/schema/tool"
 import { Effect, Schema, type Scope } from "effect"
-import { resolve } from "node:path"
+import { join, resolve } from "node:path"
 import { TodoRpc } from "./rpc.ts"
 import { diffTodos } from "./src/diff.ts"
+import { TodoHome } from "./src/home.ts"
 import {
   TodoInstructions,
   TodoLifecycleInstructions,
@@ -30,6 +31,7 @@ const toolError = (error: TodoError): Tool.Error => new Tool.Error({ message: er
 
 export interface TodoPluginContext {
   readonly location: Pick<Plugin.Context["location"], "directory">
+  readonly todoHome?: string
   readonly tool: Pick<Plugin.Context["tool"], "transform">
   readonly rpc: Pick<Plugin.Context["rpc"], "register">
   readonly session: Pick<Plugin.Context["session"], "get"> & {
@@ -60,6 +62,7 @@ const allowed = (action: string, resource: string, rules: readonly Permission.Ru
 export const register = (ctx: TodoPluginContext): Effect.Effect<void, never, Scope.Scope> =>
   Effect.gen(function*(): Effect.fn.Return<void, unknown, Scope.Scope> {
     const store: TodoStore = yield* makeTodoStore
+    const todoHome: string = ctx.todoHome ?? TodoHome
     yield* ctx.session.hook(
       "context",
       (event): Effect.Effect<void> =>
@@ -122,7 +125,7 @@ export const register = (ctx: TodoPluginContext): Effect.Effect<void, never, Sco
 
     const directoryFor = (session: Session.Info): Effect.Effect<SessionDirectory, TodoError> =>
       Schema.decodeUnknownEffect(SessionDirectory)({
-        directory: session.location.directory,
+        directory: todoHome,
         name: session.id,
       }).pipe(Effect.mapError((error): TodoError => new TodoError({ message: error.message })))
 
@@ -134,7 +137,7 @@ export const register = (ctx: TodoPluginContext): Effect.Effect<void, never, Sco
 
     const rpcHandlers: RpcHandlers<typeof TodoRpc> = {
       read: (input, context): ReturnType<RpcHandlers<typeof TodoRpc>["read"]> =>
-        read(input.sessionID).pipe(
+        read(Session.ID.make(input.sessionID)).pipe(
           Effect.mapError(
             (error): ReturnType<typeof context.error<"storage">> =>
               context.error("storage", error.message, { message: error.message }),
@@ -162,7 +165,7 @@ export const register = (ctx: TodoPluginContext): Effect.Effect<void, never, Sco
         ...agent.permissions,
         ...(session.permissions ?? []),
       ]
-      const resource: string = `.agents/sessions/${session.id}/todo.txt`
+      const resource: string = join(todoHome, session.id, "todo.txt")
       if (!allowed("todowrite", resource, rules)) {
         return yield* new Tool.Error({
           message:

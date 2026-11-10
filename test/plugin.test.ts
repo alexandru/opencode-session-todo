@@ -132,6 +132,7 @@ const makeHost = (options: HostOptions): TodoHost => {
   }
   const context: TodoPluginContext = {
     location: { directory: AbsolutePath.make(options.directory) },
+    todoHome: options.directory,
     tool: {
       transform: (callback: (editor: ToolEditor) => void) => {
         callback(editor)
@@ -420,7 +421,7 @@ test("todowrite persists exact bytes and todoread returns the same list and path
   )
   const written: Tool.Result = expectSuccess(outcome.write)
   const read: Snapshot = snapshotOf(expectSuccess(outcome.read))
-  const path: string = join(directory, ".agents", "sessions", "ses_tools", "todo.txt")
+  const path: string = join(directory, "ses_tools", "todo.txt")
   const stored: Snapshot = Schema.decodeUnknownSync(Snapshot)(written.output)
   expect(stored.path).toBe(path)
   expect(stored.todos).toEqual(todos)
@@ -432,7 +433,7 @@ test("todowrite persists exact bytes and todoread returns the same list and path
   expect(await readFile(path, "utf8")).toBe(
     "(A) Ship +plugin @opencode status:in_progress\n(B) Read docs\n",
   )
-  expect(await readdir(join(directory, ".agents", "sessions", "ses_tools"))).toEqual(["todo.txt"])
+  expect(await readdir(join(directory, "ses_tools"))).toEqual(["todo.txt"])
   expect(host.events).toHaveLength(1)
   expect(host.events[0]).toEqual([
     "updated",
@@ -453,7 +454,7 @@ test("codemode aliases read and write the same structured snapshot as native too
     { content: "Alias write", status: "in_progress", priority: "high" },
     { content: "Native read", status: "pending", priority: "medium" },
   ])
-  const path: string = join(directory, ".agents", "sessions", "ses_tools", "todo.txt")
+  const path: string = join(directory, "ses_tools", "todo.txt")
   const context: Tool.Context = toolContext(session.id, agent.id)
   const outcome = await runPlugin(
     host,
@@ -516,13 +517,13 @@ test("codemode alias todowrite enforces the same permissions and conflicts as na
     const failure: Tool.Error = expectToolError(outcome)
     expect(failure.message, label).toContain("requires an allow permission")
     expect(host.events, label).toHaveLength(0)
-    expect(await pathExists(join(directory, ".agents")), label).toBe(false)
+    expect(await pathExists(join(directory, "ses_tools")), label).toBe(false)
   }
   const directory: string = await temporary()
   const session: Session.Info = sessionInfo(directory, [rule("todowrite", "*", "allow")])
   const agent: Agent.Info = agentInfo([rule("todowrite", "*", "allow")])
   const host: TodoHost = sessionHost(directory, session, agent)
-  const path: string = join(directory, ".agents", "sessions", "ses_tools", "todo.txt")
+  const path: string = join(directory, "ses_tools", "todo.txt")
   const context: Tool.Context = toolContext(session.id, agent.id)
   await runPlugin(
     host,
@@ -680,7 +681,7 @@ test("todowrite content appends the full saved snapshot for changed and unchange
   const session: Session.Info = sessionInfo(directory, [rule("todowrite", "*", "allow")])
   const agent: Agent.Info = agentInfo([rule("todowrite", "*", "allow")])
   const host: TodoHost = sessionHost(directory, session, agent)
-  const path: string = join(directory, ".agents", "sessions", "ses_tools", "todo.txt")
+  const path: string = join(directory, "ses_tools", "todo.txt")
   const initial: Todos = Schema.decodeUnknownSync(Todos)([
     { content: "Alpha", status: "pending", priority: "high" },
     { content: "Beta", status: "pending", priority: "medium" },
@@ -730,7 +731,7 @@ test("todowrite fails on an unexpected stored list and instructs a fresh read", 
   const failure: Tool.Error = expectToolError(stale)
   expect(failure.message).toContain("does not match the `previous` list")
   expect(failure.message).toContain("todoread")
-  const path: string = join(directory, ".agents", "sessions", "ses_tools", "todo.txt")
+  const path: string = join(directory, "ses_tools", "todo.txt")
   expect(await readFile(path, "utf8")).toBe("(A) Alpha\n")
   expect(host.events).toHaveLength(1)
   const recovered: ToolOutcome = await runPlugin(
@@ -748,7 +749,7 @@ test("todowrite fails on an unexpected stored list and instructs a fresh read", 
   expect(host.events).toHaveLength(2)
 })
 
-test("deny, ask, and unmatched rules reject todowrite without creating .agents", async (): Promise<void> => {
+test("deny, ask, and unmatched rules reject todowrite without creating todo directories", async (): Promise<void> => {
   const cases: ReadonlyArray<readonly [string, readonly Permission.Rule[]]> = [
     ["deny", [rule("todowrite", "*", "deny")]],
     ["ask", [rule("todowrite", "*", "ask")]],
@@ -768,7 +769,7 @@ test("deny, ask, and unmatched rules reject todowrite without creating .agents",
     const failure: Tool.Error = expectToolError(outcome)
     expect(failure.message, label).toContain("requires an allow permission")
     expect(host.events, label).toHaveLength(0)
-    expect(await pathExists(join(directory, ".agents")), label).toBe(false)
+    expect(await pathExists(join(directory, "ses_tools")), label).toBe(false)
   }
 })
 
@@ -786,7 +787,7 @@ test("a session deny overrides an earlier agent allow", async (): Promise<void> 
   const failure: Tool.Error = expectToolError(outcome)
   expect(failure.message).toContain("requires an allow permission")
   expect(host.events).toHaveLength(0)
-  expect(await pathExists(join(directory, ".agents"))).toBe(false)
+  expect(await pathExists(join(directory, "ses_tools"))).toBe(false)
 })
 
 test("a resource-specific deny after a generic allow denies with native separator patterns", async (): Promise<void> => {
@@ -794,7 +795,7 @@ test("a resource-specific deny after a generic allow denies with native separato
   const session: Session.Info = sessionInfo(directory)
   const agent: Agent.Info = agentInfo([
     rule("todowrite", "*", "allow"),
-    rule("todowrite", ".agents\\sessions\\*", "deny"),
+    rule("todowrite", join(directory, "ses_tools", "todo.txt").replaceAll("/", "\\"), "deny"),
   ])
   const host: TodoHost = sessionHost(directory, session, agent)
   const outcome: ToolOutcome = await runPlugin(
@@ -806,7 +807,7 @@ test("a resource-specific deny after a generic allow denies with native separato
   const failure: Tool.Error = expectToolError(outcome)
   expect(failure.message).toContain("requires an allow permission")
   expect(host.events).toHaveLength(0)
-  expect(await pathExists(join(directory, ".agents"))).toBe(false)
+  expect(await pathExists(join(directory, "ses_tools"))).toBe(false)
 })
 
 test("a session allow overrides an earlier agent deny", async (): Promise<void> => {
@@ -821,7 +822,7 @@ test("a session allow overrides an earlier agent deny", async (): Promise<void> 
     ]),
   )
   expectSuccess(outcome)
-  const path: string = join(directory, ".agents", "sessions", "ses_tools", "todo.txt")
+  const path: string = join(directory, "ses_tools", "todo.txt")
   expect(await readFile(path, "utf8")).toBe("(A) Override\n")
   expect(host.events).toHaveLength(1)
   expect(host.events[0]).toEqual([
@@ -856,7 +857,7 @@ test("an unknown session rejects todowrite without writing", async (): Promise<v
   )
   const failure: Tool.Error = expectToolError(outcome)
   expect(failure.message).toContain("Cannot find session")
-  expect(await pathExists(join(directory, ".agents"))).toBe(false)
+  expect(await pathExists(join(directory, "ses_missing"))).toBe(false)
 })
 
 test("a session bound to another location rejects todowrite without writing", async (): Promise<void> => {
@@ -873,8 +874,8 @@ test("a session bound to another location rejects todowrite without writing", as
   )
   const failure: Tool.Error = expectToolError(outcome)
   expect(failure.message).toContain("another project location")
-  expect(await pathExists(join(directory, ".agents"))).toBe(false)
-  expect(await pathExists(join(elsewhere, ".agents"))).toBe(false)
+  expect(await pathExists(join(directory, "ses_tools"))).toBe(false)
+  expect(await pathExists(join(elsewhere, "ses_tools"))).toBe(false)
 })
 
 test("invalid todo input fails decoding before execute and creates no file", async (): Promise<void> => {
@@ -914,7 +915,7 @@ test("invalid todo input fails decoding before execute and creates no file", asy
     )
     expectSchemaError(outcome)
     expect(host.events, label).toHaveLength(0)
-    expect(await pathExists(join(directory, ".agents")), label).toBe(false)
+    expect(await pathExists(join(directory, "ses_tools")), label).toBe(false)
   }
 })
 
@@ -925,7 +926,7 @@ test.skipIf(process.platform !== "win32")(
     const session: Session.Info = sessionInfo(directory)
     const agent: Agent.Info = agentInfo([
       rule("todowrite", "*", "allow"),
-      rule("todowrite", ".AGENTS/SESSIONS/*", "deny"),
+      rule("todowrite", join(directory, "ses_tools", "todo.txt").toUpperCase(), "deny"),
     ])
     const host: TodoHost = sessionHost(directory, session, agent)
     const outcome: ToolOutcome = await runPlugin(
@@ -936,7 +937,7 @@ test.skipIf(process.platform !== "win32")(
     )
     const failure: Tool.Error = expectToolError(outcome)
     expect(failure.message).toContain("requires an allow permission")
-    expect(await pathExists(join(directory, ".agents"))).toBe(false)
+    expect(await pathExists(join(directory, "ses_tools"))).toBe(false)
   },
 )
 
@@ -1006,7 +1007,8 @@ Replace this session’s TODO list.
 
 - You MUST pass the last known saved list as \`previous\`; use \`[]\` when known empty.
 - You SHOULD reuse the returned saved list for subsequent writes.
-- On conflict, you MUST refresh the saved list and retry.`
+- On conflict, you MUST refresh the saved list and retry.
+- Use numbered prefixes such as \`1.\` and \`1.1.\` to express hierarchy; the Desktop panel indents sub-items.`
   const readRules: string = `### \`todoread\`
 
 Read this session’s saved TODO list and storage path.
@@ -1114,8 +1116,8 @@ test("child sessions reject native and codemode alias todo tools without changin
   }
   const agent: Agent.Info = agentInfo([rule("todowrite", "*", "allow")])
   const host: TodoHost = sessionHost(directory, child, agent)
-  const path: string = join(directory, ".agents", "sessions", "ses_child", "todo.txt")
-  await mkdir(join(directory, ".agents", "sessions", "ses_child"), { recursive: true })
+  const path: string = join(directory, "ses_child", "todo.txt")
+  await mkdir(join(directory, "ses_child"), { recursive: true })
   await writeFile(path, "(A) Kept\n", "utf8")
   const context: Tool.Context = toolContext(child.id, agent.id)
   const outcomes = await runPlugin(

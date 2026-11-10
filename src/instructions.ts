@@ -4,7 +4,8 @@ Replace this session’s TODO list.
 
 - You MUST pass the last known saved list as \`previous\`; use \`[]\` when known empty.
 - You SHOULD reuse the returned saved list for subsequent writes.
-- On conflict, you MUST refresh the saved list and retry.`
+- On conflict, you MUST refresh the saved list and retry.
+- Use numbered prefixes such as \`1.\` and \`1.1.\` to express hierarchy; the Desktop panel indents sub-items.`
 
 export const TodoReadInstructions: string = `### \`todoread\`
 
@@ -21,6 +22,8 @@ export const TodoLifecycleInstructions: string = `### TODO lifecycle
 The following rules apply only when a TODO list is needed or already tracks unfinished work.
 
 - You MUST keep this session's TODO list synchronized with the requested work and its actual progress.
+- Treat the TODO list as the source of truth for the current work. A stale list is a failure to follow these rules.
+- Use numbered prefixes such as \`1.\` and \`1.1.\` to express hierarchy. Do not mark a numbered parent task completed until all of its numbered sub-tasks are completed or cancelled.
 - You MUST preserve existing tasks, order, statuses, and priorities unless actual progress or the user's instructions require a change.
 - You MUST mark a task in_progress before starting it. You MUST keep at most one task in_progress.
 - You MUST mark a task completed immediately after finishing its work and required verification.

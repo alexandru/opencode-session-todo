@@ -35,6 +35,28 @@ export const Todos = Schema.Array(Todo)
       { message: "At most one todo may be in_progress" },
     ),
   )
+  .check(
+    Schema.makeFilter(
+      (todos: readonly Todo[]): boolean => {
+        const numbered = todos.flatMap((todo): readonly (readonly [string, Todo])[] => {
+          const number = todo.content.match(/^(\d+(?:\.\d+)*)\.?\s+/)?.[1]
+          return number === undefined ? [] : [[number, todo]]
+        })
+        return numbered.every(([number, todo]) => {
+          if (todo.status !== "completed") return true
+          const prefix = `${number}.`
+          return numbered.every(
+            ([childNumber, child]) =>
+              !childNumber.startsWith(prefix) || child.status === "completed" || child.status === "cancelled",
+          )
+        })
+      },
+      {
+        message:
+          "A numbered parent task can only be completed after its numbered sub-tasks are completed or cancelled",
+      },
+    ),
+  )
   .pipe(Schema.brand("TodoList"))
 export type Todos = typeof Todos.Type
 

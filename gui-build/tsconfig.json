@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "lib": ["ESNext", "DOM"],
+    "types": [],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "baseUrl": ".",
+    "paths": {
+      "@opencode/plugin/gui": ["./node_modules/@opencode/plugin/dist/gui/index.d.ts"],
+      "@opencode/plugin/gui/vite": ["./node_modules/@opencode/plugin/dist/gui/vite.d.ts"]
+    }
+  },
+  "include": ["../gui.tsx", "../rpc.ts", "../src/model.ts", "../src/summary.ts"]
+}
