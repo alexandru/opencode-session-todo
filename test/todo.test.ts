@@ -88,7 +88,7 @@ test("a session can replace and reopen its list as standard todo.txt", async ():
     { content: "Read the docs", status: "completed", priority: "low" },
   ])
   await Effect.runPromise(store.write(session, todos))
-  expect(await readFile(join(directory, ".agents/sessions/ses_example/todo.txt"), "utf8")).toBe(
+  expect(await readFile(join(directory, "ses_example", "todo.txt"), "utf8")).toBe(
     "(A) Ship +plugin @opencode status:in_progress\nx Read the docs pri:C\n",
   )
   const reopened = await Effect.runPromise(makeTodoStore)
@@ -100,7 +100,7 @@ test("write reports the replaced list as previous", async (): Promise<void> => {
   const store: TodoStore = await newStore()
   const session: SessionDirectory = sessionDirectory(directory, "ses_previous")
   const first: WriteResult = await Effect.runPromise(store.write(session, validTodos("First")))
-  expect(first.path).toBe(join(directory, ".agents", "sessions", "ses_previous", "todo.txt"))
+  expect(first.path).toBe(join(directory, "ses_previous", "todo.txt"))
   expect(first.todos).toEqual(validTodos("First"))
   expect(first.previous).toEqual(emptyTodos)
   const second: WriteResult = await Effect.runPromise(store.write(session, validTodos("Second")))
@@ -111,8 +111,8 @@ test("write reports the replaced list as previous", async (): Promise<void> => {
 test("completing and reopening an externally dated task preserves its creation date", async (): Promise<void> => {
   const directory: string = await mkdtemp(join(tmpdir(), "opencode-todo-"))
   directories.add(directory)
-  const path: string = join(directory, ".agents/sessions/ses_dated/todo.txt")
-  await mkdir(join(directory, ".agents/sessions/ses_dated"), { recursive: true })
+  const path: string = join(directory, "ses_dated", "todo.txt")
+  await mkdir(join(directory, "ses_dated"), { recursive: true })
   await writeFile(path, "(A) 2026-10-01 Ship +plugin @opencode\n")
   const store = await Effect.runPromise(makeTodoStore)
   const session = sessionDirectory(directory, "ses_dated")
@@ -130,15 +130,15 @@ test("completing and reopening an externally dated task preserves its creation d
   expect(await readFile(path, "utf8")).toBe("(A) 2026-10-01 Ship +plugin @opencode\n")
 })
 
-test("a missing list reads as empty without creating project directories", async (): Promise<void> => {
+test("a missing list reads as empty without creating todo directories", async (): Promise<void> => {
   const directory: string = await temporary()
   const store: TodoStore = await newStore()
   const session: SessionDirectory = sessionDirectory(directory, "ses_missing")
   const snapshot: Snapshot = await Effect.runPromise(store.read(session))
-  expect(snapshot.path).toBe(join(directory, ".agents", "sessions", "ses_missing", "todo.txt"))
+  expect(snapshot.path).toBe(join(directory, "ses_missing", "todo.txt"))
   expect(snapshot.todos).toEqual(emptyTodos)
   expect(await readdir(directory)).toEqual([])
-  expect(await pathExists(join(directory, ".agents"))).toBe(false)
+  expect(await pathExists(join(directory, "ses_missing"))).toBe(false)
 })
 
 test("all statuses and priorities round-trip through todo.txt bytes", async (): Promise<void> => {
@@ -155,7 +155,7 @@ test("all statuses and priorities round-trip through todo.txt bytes", async (): 
   ])
   await Effect.runPromise(store.write(session, todos))
   expect(
-    await readFile(join(directory, ".agents", "sessions", "ses_statuses", "todo.txt"), "utf8"),
+    await readFile(join(directory, "ses_statuses", "todo.txt"), "utf8"),
   ).toBe(
     "(A) Ship +plugin @work\n"
       + "(B) Review @team status:in_progress\n"
@@ -171,7 +171,7 @@ test("writes replace the list in input order and an empty list clears the file",
   const directory: string = await temporary()
   const store: TodoStore = await newStore()
   const session: SessionDirectory = sessionDirectory(directory, "ses_replace")
-  const path: string = join(directory, ".agents", "sessions", "ses_replace", "todo.txt")
+  const path: string = join(directory, "ses_replace", "todo.txt")
   const first: Todos = Schema.decodeUnknownSync(Todos)([
     { content: "First", status: "pending", priority: "high" },
     { content: "Second", status: "pending", priority: "medium" },
@@ -195,7 +195,7 @@ test("writing an identical existing list leaves the file untouched", async (): P
   const directory: string = await temporary()
   const store: TodoStore = await newStore()
   const session: SessionDirectory = sessionDirectory(directory, "ses_identical")
-  const sessionPath: string = join(directory, ".agents", "sessions", "ses_identical")
+  const sessionPath: string = join(directory, "ses_identical")
   const path: string = join(sessionPath, "todo.txt")
   const todos: Todos = validTodos("Unchanged")
   await Effect.runPromise(store.write(session, todos))
@@ -214,7 +214,7 @@ test("writing an identical empty list leaves an existing empty file untouched", 
   const directory: string = await temporary()
   const store: TodoStore = await newStore()
   const session: SessionDirectory = sessionDirectory(directory, "ses_identical_empty")
-  const sessionPath: string = join(directory, ".agents", "sessions", "ses_identical_empty")
+  const sessionPath: string = join(directory, "ses_identical_empty")
   const path: string = join(sessionPath, "todo.txt")
   await Effect.runPromise(store.write(session, emptyTodos))
   expect(await pathExists(path)).toBe(true)
@@ -233,7 +233,7 @@ test("an initial empty write still creates todo.txt", async (): Promise<void> =>
   const directory: string = await temporary()
   const store: TodoStore = await newStore()
   const session: SessionDirectory = sessionDirectory(directory, "ses_empty_initial")
-  const sessionPath: string = join(directory, ".agents", "sessions", "ses_empty_initial")
+  const sessionPath: string = join(directory, "ses_empty_initial")
   const path: string = join(sessionPath, "todo.txt")
   const created: WriteResult = await Effect.runPromise(store.write(session, emptyTodos))
   expect(created.path).toBe(path)
@@ -249,7 +249,7 @@ test("a stale expected list is still rejected without touching an identical file
   const directory: string = await temporary()
   const store: TodoStore = await newStore()
   const session: SessionDirectory = sessionDirectory(directory, "ses_stale")
-  const sessionPath: string = join(directory, ".agents", "sessions", "ses_stale")
+  const sessionPath: string = join(directory, "ses_stale")
   const path: string = join(sessionPath, "todo.txt")
   const stored: Todos = validTodos("Stored")
   await Effect.runPromise(store.write(session, stored))
@@ -284,13 +284,13 @@ test("session names isolate lists within a project and across projects", async (
   await Effect.runPromise(store.write(alpha, alphaTodos))
   await Effect.runPromise(store.write(beta, betaTodos))
   await Effect.runPromise(store.write(alphaElsewhere, elsewhereTodos))
-  expect(await readFile(join(first, ".agents", "sessions", "ses_alpha", "todo.txt"), "utf8")).toBe(
+  expect(await readFile(join(first, "ses_alpha", "todo.txt"), "utf8")).toBe(
     "(A) Alpha in first project\n",
   )
-  expect(await readFile(join(first, ".agents", "sessions", "ses_beta", "todo.txt"), "utf8")).toBe(
+  expect(await readFile(join(first, "ses_beta", "todo.txt"), "utf8")).toBe(
     "(C) Beta in first project\n",
   )
-  expect(await readFile(join(second, ".agents", "sessions", "ses_alpha", "todo.txt"), "utf8")).toBe(
+  expect(await readFile(join(second, "ses_alpha", "todo.txt"), "utf8")).toBe(
     "(B) Alpha in second project status:in_progress\n",
   )
   expect((await Effect.runPromise(store.read(alpha))).todos).toEqual(alphaTodos)
@@ -341,8 +341,8 @@ test("externally edited CRLF, BOM, blank lines, and metadata survive read and an
   const directory: string = await temporary()
   const store: TodoStore = await newStore()
   const session: SessionDirectory = sessionDirectory(directory, "ses_external")
-  const path: string = join(directory, ".agents", "sessions", "ses_external", "todo.txt")
-  await mkdir(join(directory, ".agents", "sessions", "ses_external"), { recursive: true })
+  const path: string = join(directory, "ses_external", "todo.txt")
+  await mkdir(join(directory, "ses_external"), { recursive: true })
   const external: string =
     "\uFEFF(A) Alpha +project @context due:2026-01-05\r\n\r\n(B) Beta +other @home due:2026-02-01\r\n"
   await writeFile(path, external)
@@ -371,7 +371,7 @@ test("a disk status mismatch fails read and write without touching the file", as
   const directory: string = await temporary()
   const store: TodoStore = await newStore()
   const session: SessionDirectory = sessionDirectory(directory, "ses_mismatch")
-  const sessionPath: string = join(directory, ".agents", "sessions", "ses_mismatch")
+  const sessionPath: string = join(directory, "ses_mismatch")
   const path: string = join(sessionPath, "todo.txt")
   await mkdir(sessionPath, { recursive: true })
   await writeFile(path, "(A) Disagrees status:completed\n")
@@ -392,7 +392,7 @@ test("a duplicate disk status token fails read and write without touching the fi
   const directory: string = await temporary()
   const store: TodoStore = await newStore()
   const session: SessionDirectory = sessionDirectory(directory, "ses_duplicate")
-  const sessionPath: string = join(directory, ".agents", "sessions", "ses_duplicate")
+  const sessionPath: string = join(directory, "ses_duplicate")
   const path: string = join(sessionPath, "todo.txt")
   await mkdir(sessionPath, { recursive: true })
   await writeFile(path, "(A) Repeated status:pending status:pending\n")
@@ -413,7 +413,7 @@ test("read and write reject a symlinked todo file", async (): Promise<void> => {
   const outside: string = await temporary()
   const store: TodoStore = await newStore()
   const session: SessionDirectory = sessionDirectory(directory, "ses_link")
-  const sessionPath: string = join(directory, ".agents", "sessions", "ses_link")
+  const sessionPath: string = join(directory, "ses_link")
   const path: string = join(sessionPath, "todo.txt")
   const outsidePath: string = join(outside, "outside.txt")
   await mkdir(sessionPath, { recursive: true })
@@ -432,39 +432,39 @@ test("read and write reject a symlinked todo file", async (): Promise<void> => {
   expect(await readdir(sessionPath)).toEqual(["todo.txt"])
 })
 
-test("read rejects a .agents symlink escaping the project", async (): Promise<void> => {
+test("read rejects a symlinked session directory escaping the todo home", async (): Promise<void> => {
   const directory: string = await temporary()
   const outside: string = await temporary()
   const store: TodoStore = await newStore()
   const session: SessionDirectory = sessionDirectory(directory, "ses_foreign")
-  const outsideDirectory: string = join(outside, "sessions", "ses_foreign")
+  const outsideDirectory: string = join(outside, "ses_foreign")
   const outsidePath: string = join(outsideDirectory, "todo.txt")
   await mkdir(outsideDirectory, { recursive: true })
   await writeFile(outsidePath, "(A) Foreign task\n")
-  await symlink(outside, join(directory, ".agents"))
+  await symlink(outsideDirectory, join(directory, "ses_foreign"))
   const readError: TodoError | undefined = await failureOf(store.read(session))
   expect(await readFile(outsidePath, "utf8")).toBe("(A) Foreign task\n")
   expect(readError?._tag).toBe("TodoError")
   expect(readError?.message).toContain("must be a real directory")
 })
 
-test("write rejects a .agents symlink escaping the project", async (): Promise<void> => {
+test("write rejects a symlinked session directory escaping the todo home", async (): Promise<void> => {
   const directory: string = await temporary()
   const outside: string = await temporary()
   const store: TodoStore = await newStore()
   const session: SessionDirectory = sessionDirectory(directory, "ses_foreign")
-  const outsideDirectory: string = join(outside, "sessions", "ses_foreign")
+  const outsideDirectory: string = join(outside, "ses_foreign")
   const outsidePath: string = join(outsideDirectory, "todo.txt")
   await mkdir(outsideDirectory, { recursive: true })
   await writeFile(outsidePath, "(A) Foreign task\n")
-  await symlink(outside, join(directory, ".agents"))
+  await symlink(outsideDirectory, join(directory, "ses_foreign"))
   const writeError: TodoError | undefined = await failureOf(
     store.write(session, validTodos("Replacement")),
   )
   expect(writeError?._tag).toBe("TodoError")
   expect(writeError?.message).toContain("must be a real directory")
   expect(await readFile(outsidePath, "utf8")).toBe("(A) Foreign task\n")
-  expect((await lstat(join(directory, ".agents"))).isSymbolicLink()).toBe(true)
+  expect((await lstat(join(directory, "ses_foreign"))).isSymbolicLink()).toBe(true)
   expect(await readdir(outsideDirectory)).toEqual(["todo.txt"])
 })
 
@@ -472,7 +472,7 @@ test("concurrent writes and reads expose only complete snapshots", async (): Pro
   const directory: string = await temporary()
   const store: TodoStore = await newStore()
   const session: SessionDirectory = sessionDirectory(directory, "ses_concurrent")
-  const sessionPath: string = join(directory, ".agents", "sessions", "ses_concurrent")
+  const sessionPath: string = join(directory, "ses_concurrent")
   const path: string = join(sessionPath, "todo.txt")
 
   const initial: Todos[] = []

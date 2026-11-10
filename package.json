@@ -43,6 +43,7 @@
   "dependencies": {
     "@opencode/plugin": "2.0.27",
     "@opencode/schema": "2.0.27",
+    "@opencode/util": "2.0.27",
     "effect": "4.0.1"
   },
   "devDependencies": {

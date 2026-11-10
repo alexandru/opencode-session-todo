@@ -29,11 +29,11 @@ Reload OpenCode and reopen the TUI.
 
 - **Read and write** with `todoread` and `todowrite`, with conflict detection and change diffs.
 - **Keep tasks in view** in the terminal sidebar or the Desktop side panel; open `/todos` for the full list.
-- **Own the file** at `.agents/sessions/<session-id>/todo.txt`.
+- **Own the file** in OpenCode's data directory at `todos/<session-id>/todo.txt` — no `.agents` folder in your projects.
 
 ## Desktop
 
-The plugin also ships a GUI part for OpenCode Desktop. The **To-Do List** tab is available in the session side panel; open it from **Session todos** in the **+** menu, the `/todos` slash command, or the New tab launcher. It closes like any other tab and reads the same `.agents/sessions/<session-id>/todo.txt` as the TUI.
+The plugin also ships a GUI part for OpenCode Desktop. The **To-Do List** tab is available in the session side panel; open it from **Session todos** in the **+** menu, the `/todos` slash command, or the New tab launcher. It closes like any other tab and reads the same `todos/<session-id>/todo.txt` under OpenCode's data directory as the TUI.
 
 ## Format
 
