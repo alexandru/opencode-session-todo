@@ -134,7 +134,7 @@ export const register = (ctx: TodoPluginContext): Effect.Effect<void, never, Sco
 
     const rpcHandlers: RpcHandlers<typeof TodoRpc> = {
       read: (input, context): ReturnType<RpcHandlers<typeof TodoRpc>["read"]> =>
-        read(input.sessionID).pipe(
+        read(Session.ID.make(input.sessionID)).pipe(
           Effect.mapError(
             (error): ReturnType<typeof context.error<"storage">> =>
               context.error("storage", error.message, { message: error.message }),

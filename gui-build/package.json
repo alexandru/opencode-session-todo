@@ -1,0 +1,23 @@
+{
+  "name": "opencode-session-todo-gui-build",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "check": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@opencode/plugin": "2.2.6",
+    "@opencode/schema": "2.2.6",
+    "effect": "4.1.0",
+    "solid-js": "1.9.12"
+  },
+  "devDependencies": {
+    "@opencode/theme": "2.2.6",
+    "@opentui/core": "0.8.1",
+    "@opentui/solid": "0.8.1",
+    "typescript": "5.9.3",
+    "vite": "^7.0.0",
+    "vite-plugin-solid": "^2.11.0"
+  }
+}
